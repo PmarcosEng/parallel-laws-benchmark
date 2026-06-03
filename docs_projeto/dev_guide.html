@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dev Guide — Benchmark Paralelismo</title>
+<style>
+:root{--bg:#0f172a;--sf:#1e293b;--bd:#334155;--tx:#e2e8f0;--mt:#94a3b8;--acc:#60a5fa;--grn:#34d399;--yel:#fbbf24;--red:#f87171;--pur:#a78bfa}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;line-height:1.7;display:flex}
+#nav{position:fixed;top:0;left:0;width:230px;height:100vh;background:var(--sf);border-right:1px solid var(--bd);overflow-y:auto;padding:1rem 0;z-index:100;scrollbar-width:thin;scrollbar-color:#334155 transparent}
+#nav h2{font-size:.62rem;color:var(--mt);text-transform:uppercase;letter-spacing:.09em;padding:.5rem 1rem .1rem;margin-top:.4rem}
+#nav a{display:block;padding:.28rem 1rem;color:var(--mt);text-decoration:none;font-size:.78rem;border-left:2px solid transparent;transition:all .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#nav a:hover,#nav a.active{color:var(--acc);border-left-color:var(--acc);background:#ffffff06}
+#nav .sep{height:1px;background:var(--bd);margin:.4rem .9rem}
+main{margin-left:230px;padding:2.5rem 2.5rem 4rem;max-width:900px;width:100%}
+.sec{margin-bottom:3rem;scroll-margin-top:1.5rem}
+.sec h1{font-size:1.45rem;font-weight:700;margin-bottom:.35rem;border-bottom:2px solid var(--acc);padding-bottom:.35rem;display:inline-block}
+.sec h2{font-size:1rem;font-weight:600;margin:1.4rem 0 .5rem;color:var(--acc)}
+.sec h3{font-size:.9rem;font-weight:600;margin:1rem 0 .3rem;color:var(--yel)}
+.sec p{color:#cbd5e1;margin-bottom:.7rem}
+.sec ul,.sec ol{color:#cbd5e1;padding-left:1.4rem;margin-bottom:.7rem}
+.sec li{margin-bottom:.3rem}
+.box{border-radius:.5rem;padding:.85rem 1.1rem;margin:.9rem 0;border-left:3px solid}
+.box.info{background:#1e3a5f30;border-color:var(--acc)}.box.warn{background:#78350f30;border-color:var(--yel)}.box.good{background:#14532d30;border-color:var(--grn)}.box.bad{background:#7f1d1d30;border-color:var(--red)}.box.pur{background:#4c1d9530;border-color:var(--pur)}
+.box p{margin:0;font-size:.88rem}
+.formula{background:var(--sf);border:1px solid var(--bd);border-radius:.5rem;padding:.75rem 1.2rem;margin:1rem 0;font-family:'Courier New',monospace;font-size:1.05rem;color:var(--grn);letter-spacing:.02em;text-align:center}
+.formula small{display:block;color:var(--mt);font-family:inherit;font-size:.75rem;margin-top:.35rem}
+pre{background:#0d1526;border:1px solid var(--bd);border-left:3px solid var(--acc);border-radius:.45rem;padding:.85rem 1.1rem;overflow-x:auto;margin:.85rem 0;font-size:.81rem;line-height:1.6}
+code{font-family:'Cascadia Code','Consolas',monospace}
+pre code{font-family:'Cascadia Code','Consolas',monospace}
+.kw{color:#c084fc}.cm{color:#475569;font-style:italic}.st{color:#34d399}.nm{color:#fbbf24}.fn{color:#60a5fa}.pp{color:#f87171}
+table{width:100%;border-collapse:collapse;font-size:.83rem;margin:.8rem 0}
+th{background:var(--bg);color:var(--mt);text-align:left;padding:.4rem .7rem;border-bottom:1px solid var(--bd);font-weight:500;font-size:.72rem;text-transform:uppercase}
+td{padding:.4rem .7rem;border-bottom:1px solid var(--bd)}
+.ok{color:var(--grn)}.wa{color:var(--yel)}.ba{color:var(--red)}.pu{color:var(--pur)}
+tr:hover td{background:#ffffff04}
+dl{margin:.5rem 0}
+.gterm{margin-bottom:.9rem}
+dt{font-weight:600;color:var(--tx);font-size:.88rem}
+dd{color:#cbd5e1;font-size:.85rem;padding-left:1rem;margin-top:.15rem}
+.arch{background:#0d1526;border:1px solid var(--bd);border-left:3px solid var(--pur);border-radius:.45rem;padding:.85rem 1.1rem;font-family:'Cascadia Code','Consolas',monospace;font-size:.8rem;line-height:1.8;color:#94a3b8;overflow-x:auto;margin:.85rem 0}
+.arch .acc{color:var(--acc)}.arch .grn{color:var(--grn)}.arch .yel{color:var(--yel)}.arch .pur{color:var(--pur)}
+</style>
+</head>
+<body>
+
+<nav id="nav">
+  <h2>Vis&atilde;o Geral</h2>
+  <a href="#s-overview">1. Vis&atilde;o Geral</a>
+  <a href="#s-files">2. Estrutura de Arquivos</a>
+  <a href="#s-arch">3. Arquitetura</a>
+  <div class="sep"></div>
+  <h2>Estruturas de Dados</h2>
+  <a href="#s-event">4. Struct Event</a>
+  <div class="sep"></div>
+  <h2>M&oacute;dulos C</h2>
+  <a href="#s-generator">5. generator.c</a>
+  <a href="#s-search">6. search.c</a>
+  <a href="#s-simmath">7. sim_math.c</a>
+  <div class="sep"></div>
+  <h2>CUDA</h2>
+  <a href="#s-cuda">8. Kernels CUDA</a>
+  <div class="sep"></div>
+  <h2>Configura&ccedil;&atilde;o</h2>
+  <a href="#s-hwcfg">9. hardware.cfg</a>
+  <a href="#s-json">10. Formato JSON</a>
+  <div class="sep"></div>
+  <h2>Build</h2>
+  <a href="#s-build-gcc">11. Compilar GCC</a>
+  <a href="#s-build-cuda">12. Compilar CUDA</a>
+  <a href="#s-dist">13. Distribui&ccedil;&atilde;o</a>
+  <div class="sep"></div>
+  <h2>Dashboard</h2>
+  <a href="#s-dashboard">14. Dashboard</a>
+  <div class="sep"></div>
+  <h2>Teoria</h2>
+  <a href="#s-timing">15. Medi&ccedil;&atilde;o de Tempo</a>
+  <a href="#s-amdahl">16. Amdahl &amp; Gustafson</a>
+</nav>
+
+<main>
+
+<!-- 1. VISAO GERAL -->
+<section class="sec" id="s-overview">
+  <h1>1. Vis&atilde;o Geral</h1>
+  <p>Este benchmark demonstra, de forma rigorosa e reproduz&iacute;vel, como as <strong>Leis de Amdahl e Gustafson</strong> se manifestam em cargas de trabalho reais. O projeto cobre dois dom&iacute;nios complementares:</p>
+  <ul>
+    <li><strong>Busca de eventos</strong> — quatro algoritmos (linear, bin&aacute;ria, hash, reduce) em quatro modos de execu&ccedil;&atilde;o (serial, OpenMP, GPU sim, CUDA real).</li>
+    <li><strong>Matem&aacute;tica densa</strong> — Monte Carlo Pi e Mandelbrot 2D, ambos com fra&ccedil;&atilde;o paralela fp&asymp;100%, demonstrando o caso ideal para paralelismo.</li>
+  </ul>
+  <p>Cada execu&ccedil;&atilde;o produz dois arquivos JSON em <code>runs/</code>: um para busca, um para matem&aacute;tica. O <code>dashboard.html</code> est&aacute;tico consome esses arquivos via drag-drop, sem servidor.</p>
+  <div class="box info"><p><strong>Objetivo did&aacute;tico:</strong> o aluno observa que algoritmos com fp alto (reduce, Monte Carlo) escalam bem, enquanto algoritmos com overhead de sincroniza&ccedil;&atilde;o ou acesso serial (hash lookup pequeno, busca bin&aacute;ria) podem ser mais lentos com mais threads — exatamente o que Amdahl previu.</p></div>
+</section>
+
+<!-- 2. ESTRUTURA DE ARQUIVOS -->
+<section class="sec" id="s-files">
+  <h1>2. Estrutura de Arquivos</h1>
+  <table>
+    <tr><th>Arquivo</th><th>Linguagem</th><th>Fun&ccedil;&atilde;o</th></tr>
+    <tr><td><code>benchmark.c</code></td><td>C99</td><td>Orquestrador principal: l&ecirc; config, executa todos os loops de medi&ccedil;&atilde;o, salva JSONs em <code>runs/</code></td></tr>
+    <tr><td><code>event.h</code></td><td>C</td><td>Define <code>struct Event</code> (96 bytes) e <code>BenchmarkResult</code></td></tr>
+    <tr><td><code>generator.c / .h</code></td><td>C99</td><td>Gera eventos sint&eacute;ticos com Box-Muller e Poisson, semente fixa 42</td></tr>
+    <tr><td><code>search.c / .h</code></td><td>C99 + OpenMP</td><td>4 algoritmos &times; 4 modos (serial, openmp, gpu_sim, [cuda])</td></tr>
+    <tr><td><code>search_cuda.cu / .h</code></td><td>CUDA C++</td><td>Kernels CUDA reais para busca linear e reduce</td></tr>
+    <tr><td><code>sim_math.c / .h</code></td><td>C99 + OpenMP</td><td>Monte Carlo Pi e Mandelbrot 2D em serial, OpenMP e gpu_sim</td></tr>
+    <tr><td><code>sim_math_cuda.cu / .h</code></td><td>CUDA C++</td><td>Kernels CUDA para Monte Carlo e Mandelbrot (sm_75)</td></tr>
+    <tr><td><code>hardware.cfg</code></td><td>texto</td><td>Configura&ccedil;&atilde;o de hardware lida obrigatoriamente em runtime</td></tr>
+    <tr><td><code>Makefile</code></td><td>make</td><td>Build GCC com e sem OpenMP, targets: all, dist, dist_noomp</td></tr>
+    <tr><td><code>build_cuda.bat</code></td><td>BAT + PowerShell</td><td>Build nvcc + cl.exe, empacota dist_com_cuda e dist_sem_cuda</td></tr>
+    <tr><td><code>dashboard.html</code></td><td>HTML/JS</td><td>Dashboard est&aacute;tico com 3 abas: Busca, Matem&aacute;tica, Comparar</td></tr>
+    <tr><td><code>dev_guide.html</code></td><td>HTML</td><td>Este arquivo — documenta&ccedil;&atilde;o t&eacute;cnica completa para desenvolvedores</td></tr>
+    <tr><td><code>guide.html</code></td><td>HTML</td><td>Guia te&oacute;rico voltado ao usu&aacute;rio (conceitos de paralelismo)</td></tr>
+    <tr><td><code>runs/busca_cpu/</code></td><td>JSON</td><td>Runs de busca compilados sem CUDA (um arquivo por execu&ccedil;&atilde;o)</td></tr>
+    <tr><td><code>runs/busca_cuda/</code></td><td>JSON</td><td>Runs de busca compilados com CUDA</td></tr>
+    <tr><td><code>runs/matematica_cpu/</code></td><td>JSON</td><td>Runs de matem&aacute;tica sem CUDA</td></tr>
+    <tr><td><code>runs/matematica_cuda/</code></td><td>JSON</td><td>Runs de matem&aacute;tica com CUDA</td></tr>
+  </table>
+</section>
+
+<!-- 3. ARQUITETURA -->
+<section class="sec" id="s-arch">
+  <h1>3. Arquitetura</h1>
+  <div class="arch">
+<span class="acc">benchmark.c</span>  (orquestrador)
+     |
+     +-- lê <span class="yel">hardware.cfg</span>  →  HardwareConfig
+     |
+     +-- inclui <span class="grn">event.h</span>        Event, BenchmarkResult
+     +-- inclui <span class="grn">generator.h</span>    gerar_eventos(), ordenar_por_valor()
+     +-- inclui <span class="grn">search.h</span>       busca_linear_*, busca_binaria_*, hash_*, reduce_*
+     +-- inclui <span class="grn">sim_math.h</span>     montecarlo_*, mandelbrot_*
+     |
+     +-- [#ifdef HAS_CUDA]
+     |    +-- inclui <span class="pur">search_cuda.h</span>    busca_linear_cuda(), reduce_paralelo_cuda()
+     |    +-- inclui <span class="pur">sim_math_cuda.h</span>  montecarlo_cuda(), mandelbrot_cuda()
+     |
+     +-- loop busca  →  todos_resultados[]  →  salvar_run_busca()
+     +-- loop math   →  todos_math_resultados[]  →  salvar_run_matematica()
+     |
+     +-- saída: <span class="yel">runs/busca_{cpu|cuda}/YYYYMMDD_HHMMSS.json</span>
+                <span class="yel">runs/matematica_{cpu|cuda}/YYYYMMDD_HHMMSS.json</span>
+
+<span class="acc">dashboard.html</span>  (consumidor, sem servidor)
+     |
+     +-- drop JSON  →  LOADED_RUNS[]
+     +-- Tab Busca     →  renderBusca()
+     +-- Tab Matem.    →  renderMat()
+     +-- Tab Comparar  →  renderCmp()
+  </div>
+
+  <h2>Fluxo de medi&ccedil;&atilde;o (padr&atilde;o)</h2>
+  <pre><code><span class="cm">/* Para cada algoritmo × volume: */</span>
+<span class="nm">func_serial</span>(dados, n, ...);          <span class="cm">// warmup descartado</span>
+t0 = <span class="fn">agora</span>(); <span class="nm">func_serial</span>(...); t1 = <span class="fn">agora</span>();
+<span class="nm">func_serial</span>(...);                    t2 = <span class="fn">agora</span>();
+<span class="nm">func_serial</span>(...);                    t3 = <span class="fn">agora</span>();
+t_serial = <span class="fn">mediana3</span>(t1-t0, t2-t1, t3-t2);
+
+<span class="cm">// Para cada contagem de threads:</span>
+<span class="nm">func_openmp</span>(dados, n, ..., th);     <span class="cm">// warmup</span>
+ta = <span class="fn">agora</span>(); <span class="nm">func_openmp</span>(...); tb = <span class="fn">agora</span>();
+<span class="nm">func_openmp</span>(...);                    tc = <span class="fn">agora</span>();
+<span class="nm">func_openmp</span>(...);                    td = <span class="fn">agora</span>();
+t_par    = <span class="fn">mediana3</span>(tb-ta, tc-tb, td-tc);
+speedup  = t_serial / t_par;</code></pre>
+</section>
+
+<!-- 4. STRUCT EVENT -->
+<section class="sec" id="s-event">
+  <h1>4. Struct Event (96 bytes)</h1>
+  <p>Definida em <code>event.h</code>. Alinhada para acesso eficiente na GPU (mult&iacute;plos de 16 bytes).</p>
+  <table>
+    <tr><th>Campo</th><th>Tipo</th><th>Bytes</th><th>Offset</th><th>Descri&ccedil;&atilde;o</th></tr>
+    <tr><td><code>id</code></td><td>uint32_t</td><td>4</td><td>0</td><td>Identificador &uacute;nico sequencial, come&ccedil;a em 1</td></tr>
+    <tr><td><code>timestamp</code></td><td>int64_t</td><td>8</td><td>8</td><td>Unix timestamp em milissegundos (semente 42 + Poisson)</td></tr>
+    <tr><td><code>valor</code></td><td>float</td><td>4</td><td>16</td><td>Leitura do sensor — distribui&ccedil;&atilde;o Normal &mu;=50, &sigma;=15 (Box-Muller)</td></tr>
+    <tr><td><code>valor_secundario</code></td><td>float</td><td>4</td><td>20</td><td>Segunda leitura correlacionada com <code>valor</code></td></tr>
+    <tr><td><code>categoria</code></td><td>Categoria (enum)</td><td>4</td><td>24</td><td>0=NORMAL(70%), 1=ALERTA(20%), 2=CRITICO(8%), 3=INATIVO(2%)</td></tr>
+    <tr><td><code>status</code></td><td>uint8_t</td><td>1</td><td>28</td><td>0=ok, 1=aviso, 2=falha</td></tr>
+    <tr><td><code>tag</code></td><td>char[32]</td><td>32</td><td>32</td><td>String formatada "EVT-NNNNNN"</td></tr>
+    <tr><td><code>origem</code></td><td>char[16]</td><td>16</td><td>64</td><td>String "SENSOR_NN" (01-20)</td></tr>
+    <tr><td><code>checksum</code></td><td>uint32_t</td><td>4</td><td>80</td><td>XOR simples dos campos num&eacute;ricos — integridade</td></tr>
+    <tr><td><code>_pad</code></td><td>uint8_t[8]</td><td>8</td><td>84</td><td>Padding para alinhar em 96 bytes (m&uacute;ltiplo de 16)</td></tr>
+  </table>
+  <p>Total: 4+4+8+4+4+4+1+3+32+16+4+8 = <strong>96 bytes</strong> com padding impl&iacute;cito do compilador entre <code>id</code> e <code>timestamp</code>.</p>
+  <div class="box info"><p><strong>Calculo de mem&oacute;ria:</strong> 1.000.000 eventos = 96 MB. O benchmark aloca ~3x o tamanho bruto (dados originais + c&oacute;pia ordenada + tabela hash), portanto 1M ev &asymp; 290 MB RAM total.</p></div>
+</section>
+
+<!-- 5. GENERATOR.C -->
+<section class="sec" id="s-generator">
+  <h1>5. M&oacute;dulo generator.c</h1>
+  <p>Gera arrays de eventos sint&eacute;ticos com distribui&ccedil;&otilde;es estat&iacute;sticas reais&iacute;ticas. Semente fixa 42 garante reprodutibilidade entre m&aacute;quinas.</p>
+
+  <h2>Box-Muller — distribui&ccedil;&atilde;o Normal</h2>
+  <p>O campo <code>valor</code> segue N(&mu;=50, &sigma;=15). A transforma&ccedil;&atilde;o Box-Muller converte dois uniformes U(0,1) em dois normais:</p>
+  <div class="formula">
+    Z&#8320; = &radic;(&minus;2 ln U&#8321;) &times; cos(2&pi; U&#8322;)
+    &nbsp;&nbsp;|&nbsp;&nbsp;
+    Z&#8321; = &radic;(&minus;2 ln U&#8321;) &times; sin(2&pi; U&#8322;)
+    <small>valor = &mu; + Z&#8320; &times; &sigma; = 50 + Z&#8320; &times; 15</small>
+  </div>
+  <pre><code><span class="cm">/* implementacao em generator.c */</span>
+<span class="kw">static double</span> <span class="fn">box_muller</span>(<span class="kw">double</span> u1, <span class="kw">double</span> u2) {
+    <span class="kw">return</span> sqrt(-2.0 * log(u1)) * cos(2.0 * M_PI * u2);
+}
+ev.valor = (<span class="kw">float</span>)(50.0 + <span class="fn">box_muller</span>(u1, u2) * 15.0);</code></pre>
+
+  <h2>Processo de Poisson — timestamps</h2>
+  <p>Os timestamps simulam chegadas de eventos com taxa &lambda; = 100 eventos/segundo. O intervalo entre eventos segue a distribui&ccedil;&atilde;o exponencial via inversa da CDF:</p>
+  <div class="formula">
+    &Delta;t = &minus;ln(U) / &lambda;
+    <small>U ~ Uniforme(0,1), &lambda; = 100 ev/s &rarr; intervalo m&eacute;dio = 10 ms</small>
+  </div>
+
+  <h2>API p&uacute;blica</h2>
+  <table>
+    <tr><th>Fun&ccedil;&atilde;o</th><th>Descri&ccedil;&atilde;o</th></tr>
+    <tr><td><code>Event* gerar_eventos(int n)</code></td><td>Aloca e preenche array de n eventos. Retorna NULL se malloc falhar.</td></tr>
+    <tr><td><code>void ordenar_por_valor(Event *ev, int n)</code></td><td>Ordena in-place por <code>valor</code> (qsort). Necess&aacute;rio para busca bin&aacute;ria.</td></tr>
+    <tr><td><code>HashTable* hash_criar(Event*, int)</code></td><td>Cria tabela hash por <code>id</code> com separate chaining. Fator de carga &alpha; &le; 0.75.</td></tr>
+    <tr><td><code>void hash_destruir(HashTable*)</code></td><td>Libera toda a mem&oacute;ria da tabela hash.</td></tr>
+  </table>
+</section>
+
+<!-- 6. SEARCH.C -->
+<section class="sec" id="s-search">
+  <h1>6. M&oacute;dulo search.c</h1>
+  <p>Implementa 4 algoritmos &times; 4 modos = 16 fun&ccedil;&otilde;es de busca. Cada fun&ccedil;&atilde;o retorna <code>SearchResult</code> contendo o array de resultados e o count. O caller deve chamar <code>search_result_free()</code> ap&oacute;s usar.</p>
+
+  <h2>Algoritmos</h2>
+  <table>
+    <tr><th>Algoritmo</th><th>Complexidade</th><th>Fra&ccedil;&atilde;o paralela fp</th><th>Comportamento esperado</th></tr>
+    <tr><td>Busca Linear</td><td>O(n)</td><td>~95%</td><td class="wa">Speedup 1.5-2.5x com 8t (memory-bound)</td></tr>
+    <tr><td>Busca Bin&aacute;ria</td><td>O(log n)</td><td>~10%</td><td class="ba">Speedup &lt; 1x (overhead &gt; trabalho, O(log n) serial &eacute; r&aacute;pido)</td></tr>
+    <tr><td>Hash Lookup</td><td>O(1) amort.</td><td>~80%</td><td class="ok">Speedup 2-6x com N lookups independentes</td></tr>
+    <tr><td>Reduce Paralelo</td><td>O(n)</td><td>~100%</td><td class="ok">Speedup pr&oacute;ximo de N; ideal para GPU (shared mem)</td></tr>
+  </table>
+
+  <h2>Modos de execu&ccedil;&atilde;o</h2>
+  <dl>
+    <div class="gterm"><dt>serial</dt><dd>1 thread, implementa&ccedil;&atilde;o direta sem pragma. Serve como baseline (T_serial).</dd></div>
+    <div class="gterm"><dt>openmp</dt><dd>Pool de N threads via <code>#pragma omp parallel for</code> ou <code>reduction</code>. N &isin; {2, 4, 8, ..., cpu_threads}.</dd></div>
+    <div class="gterm"><dt>gpu_sim</dt><dd>Simula o algoritmo de dois passos CUDA na CPU: divide em blocos de 256, processa cada bloco sequencialmente. N&atilde;o representa velocidade real de GPU — demonstra o algoritmo.</dd></div>
+    <div class="gterm"><dt>cuda</dt><dd>Kernel CUDA real na GPU. S&oacute; dispon&iacute;vel no build com <code>-DHAS_CUDA</code>. Mede H2D + kernel + D2H com <code>cudaEvent_t</code>.</dd></div>
+  </dl>
+
+  <h2>Exemplo: busca_linear_openmp</h2>
+  <pre><code><span class="cm">/* Varre o array em paralelo, cada thread guarda contagem local,
+   depois barreira impl&iacute;cita reduz para o resultado final. */</span>
+SearchResult <span class="fn">busca_linear_openmp</span>(<span class="kw">const</span> Event *ev, <span class="kw">int</span> n,
+                                    <span class="kw">float</span> min, <span class="kw">float</span> max, <span class="kw">int</span> threads) {
+    <span class="kw">int</span> count = 0;
+    <span class="pp">#pragma omp parallel for num_threads(threads) reduction(+:count)</span>
+    <span class="kw">for</span> (<span class="kw">int</span> i = 0; i &lt; n; i++)
+        <span class="kw">if</span> (ev[i].valor &gt;= min &amp;&amp; ev[i].valor &lt;= max) count++;
+    <span class="cm">/* coleta resultados numa segunda passagem serial */</span>
+    ...
+}</code></pre>
+
+  <div class="box warn"><p><strong>False sharing no Hash Lookup:</strong> a tabela hash usa separate chaining. Se dois threads acessam buckets na mesma cache line (64 bytes), pode ocorrer invalida&ccedil;&atilde;o desnecess&aacute;ria. O efeito &eacute; vis&iacute;vel como speedup sublinear ou negativo com muitos threads.</p></div>
+</section>
+
+<!-- 7. SIM_MATH.C -->
+<section class="sec" id="s-simmath">
+  <h1>7. M&oacute;dulo sim_math.c</h1>
+  <p>Implementa dois algoritmos matematicamente intensivos com fp&asymp;100%: Monte Carlo Pi e Mandelbrot 2D. Ambos s&atilde;o compute-bound, sem acesso a arrays de dados, o que os torna benchmarks ideais para GPU.</p>
+
+  <h2>LCG Thread-Safe</h2>
+  <p>Para garantir reprodutibilidade e evitar contention em <code>rand()</code>, cada thread usa seu pr&oacute;prio gerador LCG com semente derivada do ID da thread:</p>
+  <pre><code><span class="kw">static inline</span> uint64_t <span class="fn">lcg_next</span>(uint64_t *s) {
+    *s = *s * <span class="nm">6364136223846793005ULL</span> + <span class="nm">1442695040888963407ULL</span>;
+    <span class="kw">return</span> *s;
+}
+<span class="kw">static inline double</span> <span class="fn">lcg_double</span>(uint64_t *s) {
+    <span class="kw">return</span> (double)(<span class="fn">lcg_next</span>(s) &gt;&gt; 11) * (1.0 / (double)(1ULL &lt;&lt; 53));
+}
+<span class="cm">/* Semente por thread OpenMP: */</span>
+uint64_t state = <span class="nm">0xDEADBEEFCAFEBABEULL</span> ^ ((uint64_t)tid * <span class="nm">6364136223846793005ULL</span>);</code></pre>
+  <div class="box info"><p>Os multiplicador e incremento s&atilde;o os da Tabela 1 de Knuth (TAOCP vol 2), reconhecidos por boa equidistribui&ccedil;&atilde;o em 64 bits. O shift <code>&gt;&gt; 11</code> usa os 53 bits mais significativos para preencher a mantissa de um double IEEE 754.</p></div>
+
+  <h2>Monte Carlo Pi</h2>
+  <p>Gera N pontos (x, y) em [0,1)&sup2; e conta quantos caem dentro do quarto de c&iacute;rculo unit&aacute;rio:</p>
+  <div class="formula">
+    &pi; &asymp; 4 &times; inside / N
+    <small>inside = #{(x,y) : x&sup2; + y&sup2; &le; 1}, convergencia O(1/&radic;N)</small>
+  </div>
+  <pre><code>double <span class="fn">montecarlo_serial</span>(<span class="kw">long</span> n) {
+    uint64_t state = <span class="nm">0xDEADBEEFCAFEBABEULL</span>;
+    <span class="kw">long</span> inside = 0;
+    <span class="kw">for</span> (<span class="kw">long</span> i = 0; i &lt; n; i++) {
+        <span class="kw">double</span> x = <span class="fn">lcg_double</span>(&amp;state);
+        <span class="kw">double</span> y = <span class="fn">lcg_double</span>(&amp;state);
+        <span class="kw">if</span> (x*x + y*y &lt;= 1.0) inside++;
+    }
+    <span class="kw">return</span> 4.0 * (double)inside / (double)n;
+}</code></pre>
+
+  <h2>Mandelbrot 2D</h2>
+  <p>Calcula o n&uacute;mero de itera&ccedil;&otilde;es at&eacute; diverg&ecirc;ncia para cada pixel de uma grade side&times;side sobre [-2,1]&times;[-1.5,1.5], com max_iter=256. Retorna a soma total de itera&ccedil;&otilde;es.</p>
+  <pre><code><span class="cm">/* Para cada pixel (px, py): */</span>
+<span class="kw">float</span> c_re = -2.0f + (<span class="kw">float</span>)px * (3.0f / (<span class="kw">float</span>)side);
+<span class="kw">float</span> c_im = -1.5f + (<span class="kw">float</span>)py * (3.0f / (<span class="kw">float</span>)side);
+<span class="kw">float</span> z_re = 0.0f, z_im = 0.0f;
+<span class="kw">int</span> iter = 0;
+<span class="kw">while</span> (z_re*z_re + z_im*z_im &lt;= 4.0f &amp;&amp; iter &lt; <span class="nm">256</span>) {
+    <span class="kw">float</span> tmp = z_re*z_re - z_im*z_im + c_re;
+    z_im = 2.0f * z_re * z_im + c_im;
+    z_re = tmp;
+    iter++;
+}
+total += iter;</code></pre>
+  <div class="box warn"><p><strong>Balanceamento de carga:</strong> Mandelbrot &eacute; altamente n&atilde;o-uniforme — pixels dentro do conjunto (que atingem max_iter) s&atilde;o muito mais custosos que pixels que divergem rapidamente. Por isso a vers&atilde;o OpenMP usa <code>schedule(dynamic,4)</code> para distribuir linhas dinamicamente e evitar threads ociosas.</p></div>
+</section>
+
+<!-- 8. CUDA KERNELS -->
+<section class="sec" id="s-cuda">
+  <h1>8. Kernels CUDA</h1>
+  <p>Dois arquivos: <code>search_cuda.cu</code> (busca) e <code>sim_math_cuda.cu</code> (matem&aacute;tica). Todos os kernels targetam <code>sm_75</code> (Turing, GTX 1650).</p>
+
+  <h2>kernel_busca_linear (search_cuda.cu)</h2>
+  <p>Grid-stride loop: cada thread varre m&uacute;ltiplos elementos com stride = gridDim.x &times; blockDim.x. Shared memory reduction &rarr; atomicAdd no resultado global.</p>
+  <pre><code><span class="pp">__global__</span> <span class="kw">void</span> <span class="fn">kernel_busca_linear</span>(<span class="kw">const</span> Event *ev, <span class="kw">int</span> n,
+                                      <span class="kw">float</span> min, <span class="kw">float</span> max, <span class="kw">int</span> *d_count) {
+    <span class="pp">extern __shared__ int</span> sdata[];
+    <span class="kw">int</span> gid = blockIdx.x * blockDim.x + threadIdx.x;
+    <span class="kw">int</span> stride = gridDim.x * blockDim.x;
+    <span class="kw">int</span> local = 0;
+    <span class="kw">for</span> (<span class="kw">int</span> i = gid; i &lt; n; i += stride)
+        <span class="kw">if</span> (ev[i].valor &gt;= min &amp;&amp; ev[i].valor &lt;= max) local++;
+    sdata[threadIdx.x] = local;
+    __syncthreads();
+    <span class="cm">/* reducao em arvore */</span>
+    <span class="kw">for</span> (<span class="kw">int</span> s = blockDim.x/2; s &gt; 0; s &gt;&gt;= 1) {
+        <span class="kw">if</span> (threadIdx.x &lt; s) sdata[threadIdx.x] += sdata[threadIdx.x + s];
+        __syncthreads();
+    }
+    <span class="kw">if</span> (threadIdx.x == 0) atomicAdd(d_count, sdata[0]);
+}</code></pre>
+
+  <h2>kernel_montecarlo (sim_math_cuda.cu)</h2>
+  <p>LCG 32-bit por thread (sem depend&ecirc;ncia entre threads). Grid-stride loop + shared memory reduction. Sem transfer&ecirc;ncia H2D — tudo calculado na GPU.</p>
+  <pre><code><span class="cm">/* semente por thread: */</span>
+<span class="kw">unsigned int</span> state = (<span class="kw">unsigned int</span>)(gid * <span class="nm">1664525u</span> + <span class="nm">1013904223u</span>) ^ <span class="nm">0xDEADBEEFu</span>;
+<span class="kw">for</span> (<span class="kw">long</span> i = (<span class="kw">long</span>)gid; i &lt; n; i += stride) {
+    <span class="kw">float</span> x = <span class="fn">lcg32_float</span>(&amp;state);
+    <span class="kw">float</span> y = <span class="fn">lcg32_float</span>(&amp;state);
+    <span class="kw">if</span> (x*x + y*y &lt;= 1.0f) local_inside++;
+}
+<span class="cm">/* ... shared mem reduction ... atomicAdd(d_inside, sdata[0]) */</span></code></pre>
+
+  <h2>kernel_mandelbrot (sim_math_cuda.cu)</h2>
+  <p>1 thread por pixel, float, max_iter=256. <code>atomicAdd(d_total, (long long)iter)</code> — suportado em CC &ge; 6.0 (GTX 1650 = CC 7.5).</p>
+  <pre><code><span class="pp">__global__</span> <span class="kw">void</span> <span class="fn">kernel_mandelbrot</span>(<span class="kw">int</span> side, <span class="kw">long long</span> *d_total) {
+    <span class="kw">int</span> idx = blockIdx.x * blockDim.x + threadIdx.x;
+    <span class="kw">if</span> (idx &gt;= side*side) <span class="kw">return</span>;
+    <span class="kw">int</span> py = idx / side, px = idx % side;
+    <span class="kw">float</span> c_re = -2.0f + (<span class="kw">float</span>)px * (3.0f / (<span class="kw">float</span>)side);
+    <span class="kw">float</span> c_im = -1.5f + (<span class="kw">float</span>)py * (3.0f / (<span class="kw">float</span>)side);
+    <span class="cm">/* loop Mandelbrot ... */</span>
+    atomicAdd(d_total, (<span class="kw">long long</span>)iter);
+}</code></pre>
+
+  <h2>Medi&ccedil;&atilde;o de tempo CUDA</h2>
+  <pre><code>cudaEvent_t t_start, t_stop;
+cudaEventCreate(&amp;t_start); cudaEventCreate(&amp;t_stop);
+cudaEventRecord(t_start);
+<span class="fn">kernel</span>&lt;&lt;&lt;grid, block, smem&gt;&gt;&gt;(args);
+cudaEventRecord(t_stop);
+cudaEventSynchronize(t_stop);
+<span class="kw">float</span> ms = 0.0f;
+cudaEventElapsedTime(&amp;ms, t_start, t_stop);
+*t_kernel_s = (double)ms / 1000.0;</code></pre>
+
+  <div class="box info"><p><strong>Notas de desempenho (GTX 1650 / sm_75):</strong> blockDim=256 &eacute; o padr&atilde;o recomendado para Turing. O grid &eacute; limitado a 65535 blocos para evitar overhead de agendamento excessivo em n muito grande. Para busca linear, o gargalo &eacute; PCIe (H2D): copiar 960 MB leva ~120 ms, enquanto o kernel leva ~1 ms.</p></div>
+</section>
+
+<!-- 9. HARDWARE.CFG -->
+<section class="sec" id="s-hwcfg">
+  <h1>9. hardware.cfg</h1>
+  <p>Arquivo de configura&ccedil;&atilde;o obrigat&oacute;rio. Se n&atilde;o encontrado, o programa exibe instru&ccedil;&otilde;es e encerra com <code>exit(1)</code>. Editado manualmente pelo usu&aacute;rio antes de rodar.</p>
+
+  <h2>Par&acirc;metros</h2>
+  <table>
+    <tr><th>Chave</th><th>Tipo</th><th>Default</th><th>Descri&ccedil;&atilde;o</th></tr>
+    <tr><td><code>cpu_nome</code></td><td>string</td><td>"CPU"</td><td>Nome do processador — aparece nos JSONs como metadado</td></tr>
+    <tr><td><code>cpu_nucleos</code></td><td>int</td><td>4</td><td>N&uacute;cleos f&iacute;sicos</td></tr>
+    <tr><td><code>cpu_threads</code></td><td>int</td><td>8</td><td>Threads l&oacute;gicas (com SMT/HT) — define o maior valor testado</td></tr>
+    <tr><td><code>gpu_nome</code></td><td>string</td><td>"GPU"</td><td>Nome da GPU — metadado</td></tr>
+    <tr><td><code>gpu_cuda_cores</code></td><td>int</td><td>896</td><td>CUDA cores — usado como threads no modo gpu_sim</td></tr>
+    <tr><td><code>ram_gb</code></td><td>int</td><td>8</td><td>RAM livre em GB — metadado informativo nos JSONs</td></tr>
+    <tr><td><code>volumes_max</code></td><td>int</td><td>1000000</td><td>Maior volume de busca a testar (filtra VOLUMES_CANONICOS)</td></tr>
+    <tr><td><code>math_volumes_max</code></td><td>int</td><td>1000000</td><td>Maior volume matem&aacute;tico a testar (filtra MATH_VOLUMES_CANONICOS)</td></tr>
+  </table>
+
+  <h2>Ferramenta de c&aacute;lculo de mem&oacute;ria</h2>
+  <p>Estimativa de RAM necess&aacute;ria para um dado <code>volumes_max</code>:</p>
+  <div style="background:var(--sf);border:1px solid var(--bd);border-radius:.5rem;padding:1rem 1.2rem;margin:.9rem 0">
+    <label style="font-size:.82rem;color:var(--mt)">volumes_max: <input id="vm-input" type="number" value="1000000" style="background:#0d1526;border:1px solid var(--bd);color:var(--tx);border-radius:.25rem;padding:.2rem .5rem;font-size:.82rem;width:120px" oninput="calcMem()"></label>
+    <div id="vm-result" style="margin-top:.6rem;font-size:.85rem;color:#cbd5e1"></div>
+  </div>
+
+  <h2>Volumes can&ocirc;nicos</h2>
+  <table>
+    <tr><th>Tipo</th><th>Valores</th></tr>
+    <tr><td>Busca (<code>VOLUMES_CANONICOS</code>)</td><td>1.000 | 100.000 | 1.000.000 | 10.000.000 | 20.000.000</td></tr>
+    <tr><td>Matem&aacute;tica (<code>MATH_VOLUMES_CANONICOS</code>)</td><td>100.000 | 500.000 | 1.000.000 | 5.000.000 | 10.000.000</td></tr>
+  </table>
+</section>
+
+<!-- 10. FORMATO JSON -->
+<section class="sec" id="s-json">
+  <h1>10. Formato JSON de sa&iacute;da</h1>
+  <p>Cada execu&ccedil;&atilde;o produz <strong>dois arquivos separados</strong> em subpastas de <code>runs/</code>. O <code>run_id</code> &eacute; derivado do timestamp no formato <code>YYYYMMDD_HHMMSS</code>.</p>
+
+  <h2>Run de Busca (runs/busca_{cpu|cuda}/YYYYMMDD_HHMMSS.json)</h2>
+  <pre><code>{
+  <span class="st">"run_id"</span>: <span class="st">"20260420_103045"</span>,
+  <span class="st">"timestamp"</span>: <span class="st">"2026-04-20T10:30:45"</span>,
+  <span class="st">"simulacao"</span>: <span class="st">"busca"</span>,
+  <span class="st">"build"</span>: <span class="st">"cuda"</span>,          <span class="cm">// "cpu" ou "cuda"</span>
+  <span class="st">"hardware"</span>: {
+    <span class="st">"cpu_nome"</span>: <span class="st">"Ryzen 7 4800H"</span>,
+    <span class="st">"cpu_nucleos"</span>: <span class="nm">8</span>,
+    <span class="st">"cpu_threads"</span>: <span class="nm">16</span>,
+    <span class="st">"gpu_nome"</span>: <span class="st">"GTX 1650"</span>,
+    <span class="st">"gpu_cuda_cores"</span>: <span class="nm">896</span>,
+    <span class="st">"ram_gb"</span>: <span class="nm">4</span>
+  },
+  <span class="st">"parametros"</span>: {
+    <span class="st">"n_repeticoes"</span>: <span class="nm">3</span>,
+    <span class="st">"volumes"</span>: [<span class="nm">1000</span>, <span class="nm">100000</span>, <span class="nm">1000000</span>],
+    <span class="st">"threads"</span>: [<span class="nm">1</span>, <span class="nm">2</span>, <span class="nm">4</span>, <span class="nm">8</span>, <span class="nm">16</span>],
+    <span class="st">"evento_bytes"</span>: <span class="nm">96</span>,
+    <span class="st">"busca_min"</span>: <span class="nm">45.0</span>, <span class="st">"busca_max"</span>: <span class="nm">55.0</span>,
+    <span class="st">"busca_alvo"</span>: <span class="nm">50.0</span>, <span class="st">"n_ids_hash"</span>: <span class="nm">10000</span>
+  },
+  <span class="st">"resultados"</span>: [
+    {<span class="st">"algoritmo"</span>:<span class="st">"linear"</span>,<span class="st">"modo"</span>:<span class="st">"serial"</span>,<span class="st">"volume"</span>:<span class="nm">1000</span>,
+     <span class="st">"threads"</span>:<span class="nm">1</span>,<span class="st">"tempo_s"</span>:<span class="nm">0.000123</span>,<span class="st">"speedup"</span>:<span class="nm">1.0</span>,<span class="st">"count"</span>:<span class="nm">332</span>}
+    <span class="cm">// ... uma entrada por (algoritmo, modo, volume, threads)</span>
+  ]
+}</code></pre>
+
+  <h2>Run de Matem&aacute;tica (runs/matematica_{cpu|cuda}/YYYYMMDD_HHMMSS.json)</h2>
+  <pre><code>{
+  <span class="st">"simulacao"</span>: <span class="st">"matematica"</span>,
+  <span class="st">"parametros"</span>: {
+    <span class="st">"math_volumes"</span>: [<span class="nm">100000</span>, <span class="nm">500000</span>, <span class="nm">1000000</span>],
+    <span class="st">"mandelbrot_max_iter"</span>: <span class="nm">256</span>
+    <span class="cm">// threads e n_repeticoes id&ecirc;nticos ao run de busca</span>
+  },
+  <span class="st">"resultados"</span>: [
+    {<span class="st">"algoritmo"</span>:<span class="st">"montecarlo"</span>,<span class="st">"modo"</span>:<span class="st">"serial"</span>,<span class="st">"volume"</span>:<span class="nm">100000</span>,
+     <span class="st">"threads"</span>:<span class="nm">1</span>,<span class="st">"tempo_s"</span>:<span class="nm">0.001</span>,<span class="st">"speedup"</span>:<span class="nm">1.0</span>,<span class="st">"valor"</span>:<span class="nm">3.14159</span>},
+    {<span class="st">"algoritmo"</span>:<span class="st">"mandelbrot"</span>,<span class="st">"modo"</span>:<span class="st">"serial"</span>,<span class="st">"volume"</span>:<span class="nm">100000</span>,
+     <span class="st">"threads"</span>:<span class="nm">1</span>,<span class="st">"tempo_s"</span>:<span class="nm">0.045</span>,<span class="st">"speedup"</span>:<span class="nm">1.0</span>,<span class="st">"valor"</span>:<span class="nm">12800000.0</span>}
+  ]
+}</code></pre>
+  <p>O campo <code>valor</code> cont&eacute;m a estimativa de &pi; para montecarlo, e a soma total de itera&ccedil;&otilde;es para mandelbrot.</p>
+</section>
+
+<!-- 11. BUILD GCC -->
+<section class="sec" id="s-build-gcc">
+  <h1>11. Compilar com GCC</h1>
+  <pre><code><span class="cm"># Build padr&atilde;o (com OpenMP)</span>
+make
+
+<span class="cm"># Sem OpenMP (fallback serial para Windows sem libgomp)</span>
+make benchmark_noomp
+
+<span class="cm"># Bin&aacute;rio est&aacute;tico redistribu&iacute;vel (sem DLLs)</span>
+make dist
+
+<span class="cm"># Est&aacute;tico sem OpenMP (portabilidade m&aacute;xima)</span>
+make dist_noomp</code></pre>
+  <p>O Makefile usa <code>-std=c99 -Wall -Wextra -O2 -fopenmp</code>. Os fontes compilados s&atilde;o:</p>
+  <pre><code>SRC = generator.c search.c sim_math.c benchmark.c</code></pre>
+  <div class="box warn"><p><strong>Windows sem MinGW instalado:</strong> use o <code>benchmark_dist.exe</code> pr&eacute;-compilado na pasta <code>dist_sem_cuda/</code>, que &eacute; completamente est&aacute;tico e n&atilde;o precisa de DLLs.</p></div>
+</section>
+
+<!-- 12. BUILD CUDA -->
+<section class="sec" id="s-build-cuda">
+  <h1>12. Compilar com CUDA</h1>
+  <p>Duplo-clique em <code>build_cuda.bat</code> ou execute no terminal. Requer CUDA Toolkit e Visual Studio 2019/2022 instalados.</p>
+  <pre><code>nvcc.exe -O2 -arch=sm_75 -ccbin &lt;cl.exe&gt; ^
+  -Xcompiler '/O2,/openmp,/W3' -DHAS_CUDA ^
+  benchmark.c generator.c search.c sim_math.c ^
+  search_cuda.cu sim_math_cuda.cu ^
+  -o benchmark_cuda.exe</code></pre>
+  <p>O script PowerShell embarcado no .bat:</p>
+  <ol>
+    <li>Localiza <code>cl.exe</code> no Visual Studio (Hostx64\x64)</li>
+    <li>Compila com nvcc usando cl.exe como compilador host</li>
+    <li>Copia resultado + vcomp140.dll para <code>dist_com_cuda\</code></li>
+    <li>Copia <code>benchmark_dist.exe</code> (GCC) para <code>dist_sem_cuda\</code></li>
+  </ol>
+  <div class="box info"><p><strong>Compute Capability:</strong> sm_75 = Turing (GTX 1650, RTX 2xxx). Para outras GPUs: RTX 3xxx = sm_86, RTX 4xxx = sm_89. Altere <code>-arch=sm_75</code> conforme necess&aacute;rio.</p></div>
+</section>
+
+<!-- 13. DISTRIBUICAO -->
+<section class="sec" id="s-dist">
+  <h1>13. Distribui&ccedil;&atilde;o</h1>
+  <p>Ap&oacute;s rodar <code>build_cuda.bat</code>, duas pastas s&atilde;o criadas:</p>
+  <table>
+    <tr><th>Pasta</th><th>Conte&uacute;do</th><th>Requisito no PC destino</th></tr>
+    <tr><td><code>dist_com_cuda\</code></td><td>benchmark_cuda.exe + vcomp140.dll + hardware.cfg</td><td>Windows 10/11 + driver NVIDIA atualizado</td></tr>
+    <tr><td><code>dist_sem_cuda\</code></td><td>benchmark.exe + hardware.cfg</td><td>Qualquer Windows 10/11 (64-bit)</td></tr>
+  </table>
+  <p>Distribua tamb&eacute;m <code>dashboard.html</code> e <code>guide.html</code> junto com os execut&aacute;veis. O usu&aacute;rio roda o benchmark, os JSONs s&atilde;o salvos em <code>runs/</code>, depois arrasta no dashboard para visualizar.</p>
+  <div class="box good"><p><strong>Zero depend&ecirc;ncias externas:</strong> o benchmark_dist.exe &eacute; compilado com <code>-static</code>, incorporando libgomp e libpthread. Roda sem instalar MinGW, Runtime C ou OpenMP DLLs.</p></div>
+</section>
+
+<!-- 14. DASHBOARD -->
+<section class="sec" id="s-dashboard">
+  <h1>14. Dashboard</h1>
+  <p>O <code>dashboard.html</code> &eacute; uma p&aacute;gina est&aacute;tica completa (sem servidor, sem framework) que consome arquivos JSON de runs via drag-drop.</p>
+
+  <h2>Arquitetura JS</h2>
+  <pre><code><span class="kw">const</span> LOADED_RUNS = [];   <span class="cm">// todos os runs carregados</span>
+<span class="kw">const</span> CHARTS = {};        <span class="cm">// inst&acirc;ncias Chart.js (destroy/recreate)</span>
+<span class="kw">const</span> PALETTE = [<span class="st">'#60a5fa'</span>,<span class="st">'#34d399'</span>,...]; <span class="cm">// 10 cores</span>
+
+<span class="kw">function</span> <span class="fn">addRun</span>(file) { <span class="cm">/* parse JSON, push LOADED_RUNS, refresh tabs */</span> }
+<span class="kw">function</span> <span class="fn">find</span>(run, algo, vol, mode, th) { <span class="cm">/* busca em run.resultados */</span> }
+<span class="kw">function</span> <span class="fn">fv</span>(n) { <span class="cm">/* formata volume: 1M, 500K, etc */</span> }
+<span class="kw">function</span> <span class="fn">amdahlCap</span>(N, fs) { <span class="kw">return</span> 1/(fs+(1-fs)/N); }
+<span class="kw">function</span> <span class="fn">estimateFs</span>(run, algo, vol) {
+  <span class="cm">/* inversao de Amdahl: fs = (N/S - 1) / (N - 1) */</span>
+}</code></pre>
+
+  <h2>Abas</h2>
+  <dl>
+    <div class="gterm"><dt>Busca de Eventos</dt><dd>Selector de run, gr&aacute;fico tempo serial &times; volume (log), gr&aacute;ficos speedup &times; modo (4 algoritmos), Gustafson, tabela resumo com cores.</dd></div>
+    <div class="gterm"><dt>Matem&aacute;tica Densa</dt><dd>Selector de run, gr&aacute;fico tempo serial, speedup &times; modo (montecarlo + mandelbrot), Gustafson, cards de destaque GPU vs CPU, tabela.</dd></div>
+    <div class="gterm"><dt>Comparar Runs</dt><dd>Toggle busca/matem&aacute;tica, checkboxes de runs, speedup &times; volume (m&uacute;ltiplos runs sobrepostos), tempo serial (log), curva speedup &times; threads, tabela comparativa.</dd></div>
+  </dl>
+
+  <h2>Depend&ecirc;ncias externas</h2>
+  <p>Apenas Chart.js 4.4.0 via CDN (<code>cdn.jsdelivr.net</code>). Se offline, baixe o UMD bundle e troque o script src para o caminho local.</p>
+</section>
+
+<!-- 15. MEDICAO DE TEMPO -->
+<section class="sec" id="s-timing">
+  <h1>15. Medi&ccedil;&atilde;o de Tempo</h1>
+  <p>A fun&ccedil;&atilde;o <code>agora()</code> usa o m&eacute;todo mais preciso dispon&iacute;vel em cada plataforma:</p>
+  <pre><code><span class="pp">#ifdef _MSC_VER</span>
+<span class="kw">static double</span> <span class="fn">agora</span>(<span class="kw">void</span>) {
+    LARGE_INTEGER freq, cnt;
+    <span class="fn">QueryPerformanceFrequency</span>(&amp;freq);
+    <span class="fn">QueryPerformanceCounter</span>(&amp;cnt);
+    <span class="kw">return</span> (double)cnt.QuadPart / (double)freq.QuadPart;
+}
+<span class="pp">#else</span>
+<span class="kw">static double</span> <span class="fn">agora</span>(<span class="kw">void</span>) {
+    <span class="kw">struct</span> timespec t;
+    <span class="fn">clock_gettime</span>(CLOCK_MONOTONIC, &amp;t);
+    <span class="kw">return</span> (double)t.tv_sec + (double)t.tv_nsec / 1e9;
+}
+<span class="pp">#endif</span></code></pre>
+
+  <h2>Por que mediana de 3?</h2>
+  <p>Cada medi&ccedil;&atilde;o &eacute; repetida 3 vezes (ap&oacute;s 1 warmup descartado) e a mediana &eacute; usada. A mediana &eacute; robusta a outliers: um pico de lat&ecirc;ncia do OS (interrupt, context switch, antiv&iacute;rus) que infle 1 das 3 medi&ccedil;&otilde;es n&atilde;o afeta a mediana, mas afetaria a m&eacute;dia.</p>
+  <pre><code><span class="kw">static double</span> <span class="fn">mediana3</span>(<span class="kw">double</span> a, <span class="kw">double</span> b, <span class="kw">double</span> c) {
+    <span class="kw">if</span> (a &gt; b) { <span class="kw">double</span> t = a; a = b; b = t; }
+    <span class="kw">if</span> (b &gt; c) { <span class="kw">double</span> t = b; b = c; c = t; }
+    <span class="kw">if</span> (a &gt; b) { <span class="kw">double</span> t = a; a = b; b = t; }
+    <span class="kw">return</span> b; <span class="cm">/* elemento do meio ap&oacute;s ordena&ccedil;&atilde;o */</span>
+}</code></pre>
+
+  <div class="box info"><p><strong>Precis&atilde;o:</strong> QPC no Windows tem resolu&ccedil;&atilde;o de ~100 ns (freq ~10 MHz). clock_gettime no Linux tem resolu&ccedil;&atilde;o de ~1 ns. Para opera&ccedil;&otilde;es muito r&aacute;pidas (&lt; 1 &micro;s), o overhead da medi&ccedil;&atilde;o pode ser significativo — aumentar o volume resolve.</p></div>
+
+  <h2>Kernels CUDA: cudaEvent_t</h2>
+  <p>Para opera&ccedil;&otilde;es assIncronos na GPU, QPC mediria o tempo de ida-e-volta incluindo sincroniza&ccedil;&atilde;o da CPU. <code>cudaEvent_t</code> mede diretamente no hardware da GPU com resolu&ccedil;&atilde;o de ~0.5 &micro;s.</p>
+</section>
+
+<!-- 16. AMDAHL & GUSTAFSON -->
+<section class="sec" id="s-amdahl">
+  <h1>16. Leis de Amdahl e Gustafson</h1>
+
+  <h2>Lei de Amdahl</h2>
+  <p>Para um problema de tamanho <em>fixo</em>, seja f<sub>s</sub> a fra&ccedil;&atilde;o serial (n&atilde;o paraleliz&aacute;vel). O speedup m&aacute;ximo com N workers &eacute;:</p>
+  <div class="formula">S(N) = 1 / (f<sub>s</sub> + (1 - f<sub>s</sub>) / N)
+    <small>Pessimista: para N &rarr; &infin;, S &rarr; 1/f<sub>s</sub>. Se f<sub>s</sub>=0.1, max speedup = 10x independente de quantas GPUs.</small>
+  </div>
+
+  <h2>Estimativa de f<sub>s</sub> a partir dos resultados</h2>
+  <p>Invertendo a f&oacute;rmula de Amdahl a partir do speedup observado com N threads:</p>
+  <div class="formula">f<sub>s</sub> = (N / S(N) - 1) / (N - 1)
+    <small>Usada no dashboard para calcular o "Teto Amdahl" (linha cinza pontilhada nos gr&aacute;ficos de speedup)</small>
+  </div>
+  <pre><code><span class="kw">function</span> <span class="fn">estimateFs</span>(run, algo, vol) {
+  <span class="kw">const</span> best = candidates.reduce((a,b) =&gt; b.speedup &gt; a.speedup ? b : a);
+  <span class="kw">const</span> v = (best.threads / best.speedup - 1) / (best.threads - 1);
+  <span class="kw">return</span> Math.max(0.001, Math.min(0.999, v));
+}</code></pre>
+
+  <h2>Lei de Gustafson</h2>
+  <p>Para um problema que <em>cresce com N</em> (mantendo tempo constante), o speedup &eacute;:</p>
+  <div class="formula">S(N) = N - f<sub>s</sub> &times; (N - 1)
+    <small>Otimista: mais workers = mais trabalho no mesmo tempo. A curva "speedup com max threads &times; volume" demonstra isso.</small>
+  </div>
+
+  <h2>Interpreta&ccedil;&atilde;o pr&aacute;tica</h2>
+  <table>
+    <tr><th>Algoritmo</th><th>f<sub>s</sub> estimado</th><th>Teto Amdahl (8t)</th><th>Teto Amdahl (896t GPU)</th></tr>
+    <tr><td>Busca Linear</td><td class="wa">~5%</td><td class="wa">~5.5x</td><td class="ok">~20x</td></tr>
+    <tr><td>Busca Bin&aacute;ria</td><td class="ba">~90%</td><td class="ba">~1.08x</td><td class="ba">~1.1x</td></tr>
+    <tr><td>Reduce Paralelo</td><td class="ok">~1%</td><td class="ok">~7.6x</td><td class="ok">~100x+</td></tr>
+    <tr><td>Monte Carlo Pi</td><td class="ok">&lt;1%</td><td class="ok">~8x</td><td class="ok">~100x+</td></tr>
+    <tr><td>Mandelbrot 2D</td><td class="ok">~1%</td><td class="ok">~7.6x</td><td class="ok">~100x+</td></tr>
+  </table>
+  <div class="box pur"><p><strong>Por que Busca Linear tem f<sub>s</sub> maior que o esperado?</strong> A parte serial &eacute; a fase de coleta de resultados (copiar ponteiros dos elementos encontrados para o array de sa&iacute;da) que n&atilde;o pode ser paralelizada trivialmente sem sincroniza&ccedil;&atilde;o. Al&eacute;m disso, o workload &eacute; memory-bound — a banda de mem&oacute;ria &eacute; compartilhada entre todos os cores, criando uma gargalo n&atilde;o capturado pelo modelo simples de Amdahl.</p></div>
+</section>
+
+</main>
+
+<script>
+// Calculadora de memoria hardware.cfg
+function calcMem() {
+  const v = parseInt(document.getElementById('vm-input').value) || 0;
+  const bytes = v * 96;
+  const mb = bytes / (1024*1024);
+  const total = mb * 3;
+  const el = document.getElementById('vm-result');
+  if (v <= 0) { el.textContent = ''; return; }
+  el.innerHTML = `
+    <b>${v.toLocaleString('pt-BR')}</b> eventos &times; 96 bytes = <b>${mb.toFixed(1)} MB</b> bruto<br>
+    Total estimado (dados + c&oacute;pia ordenada + hash): <b>${total.toFixed(0)} MB</b> RAM<br>
+    Recomenda&ccedil;&atilde;o: RAM livre &ge; <b>${Math.ceil(total/1024)} GB</b>`;
+}
+calcMem();
+
+// Sidebar active link on scroll
+const secs = document.querySelectorAll('.sec');
+const navLinks = document.querySelectorAll('#nav a');
+window.addEventListener('scroll', () => {
+  let cur = '';
+  secs.forEach(s => { if (window.scrollY >= s.offsetTop - 60) cur = s.id; });
+  navLinks.forEach(a => {
+    a.classList.toggle('active', a.getAttribute('href') === '#'+cur);
+  });
+}, {passive: true});
+</script>
+</body>
+</html>

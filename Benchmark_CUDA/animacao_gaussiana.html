@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualizador Box-Muller: Transformando Caos em Ordem</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@300;400;600&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f0f0f;
+            --card-bg: #1a1a1a;
+            --text-main: #e0e0e0;
+            --accent-primary: #00f2ff;
+            /* Cyan Neon */
+            --accent-secondary: #ff00ea;
+            /* Magenta */
+            --accent-success: #39ff14;
+            /* Green */
+            --accent-error: #ff3131;
+            /* Red */
+            --font-ui: 'Inter', sans-serif;
+            --font-code: 'Fira Code', monospace;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: var(--font-ui);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 1100px;
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        header {
+            grid-column: 1 / -1;
+            text-align: left;
+            margin-bottom: 20px;
+            border-left: 4px solid var(--accent-primary);
+            padding-left: 20px;
+        }
+
+        h1 {
+            margin: 0;
+            font-weight: 600;
+            letter-spacing: -1px;
+            font-size: 2rem;
+            color: var(--accent-primary);
+        }
+
+        p.subtitle {
+            margin: 5px 0 0;
+            opacity: 0.7;
+            font-weight: 300;
+        }
+
+        /* Canvas Area */
+        .visual-area {
+            background: var(--card-bg);
+            border-radius: 16px;
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        #animationCanvas {
+            width: 100%;
+            height: 500px;
+            border-radius: 16px 16px 0 0;
+        }
+
+        /* Controls */
+        .controls {
+            padding: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        button {
+            background: #333;
+            border: none;
+            color: white;
+            padding: 10px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: var(--font-ui);
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        button:hover {
+            background: #444;
+            transform: translateY(-2px);
+        }
+
+        button.primary {
+            background: var(--accent-primary);
+            color: #000;
+        }
+
+        button.primary:hover {
+            background: #00d4df;
+        }
+
+        input[type=range] {
+            flex-grow: 1;
+            accent-color: var(--accent-primary);
+        }
+
+        /* Info Sidebar */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .info-box {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .narration-title {
+            color: var(--accent-primary);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        #narrationText {
+            font-size: 0.95rem;
+            line-height: 1.6;
+            min-height: 120px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            font-family: var(--font-code);
+            font-size: 0.85rem;
+        }
+
+        .stat-item {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .stat-label {
+            opacity: 0.5;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .stat-value {
+            color: var(--accent-success);
+            font-weight: 500;
+        }
+
+        .bell-curve-preview {
+            height: 100px;
+            background: #000;
+            border-radius: 8px;
+            margin-top: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .code-snippet {
+            font-family: var(--font-code);
+            font-size: 0.75rem;
+            background: #000;
+            padding: 15px;
+            border-radius: 8px;
+            color: #888;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .code-highlight {
+            color: var(--accent-primary);
+        }
+
+        /* Animation Classes */
+        .fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <header>
+            <h1>A Transformada de Box-Muller</h1>
+            <p class="subtitle">Visualizando como transformar números aleatórios em uma Curva de Gauss (Sino).</p>
+        </header>
+
+        <main class="visual-area">
+            <canvas id="animationCanvas"></canvas>
+
+            <div class="controls">
+                <button id="btnPlay" class="primary">Play</button>
+                <button id="btnStep">Próximo Passo</button>
+                <button id="btnReset">Resetar</button>
+                <span style="font-size: 0.8rem; margin-left: 20px; opacity: 0.5;">Velocidade:</span>
+                <input type="range" id="speedRange" min="1" max="100" value="50">
+            </div>
+        </main>
+
+        <aside class="sidebar">
+            <div class="info-box">
+                <span class="narration-title">Narração em Tempo Real</span>
+                <div id="narrationText">Bem-vindo! Clique em "Play" para começar o sorteio dos dardos e ver a mágica da
+                    estatística acontecer.</div>
+            </div>
+
+            <div class="info-box stats">
+                <div class="stat-item">
+                    <span class="stat-label">Valor U (X)</span>
+                    <span id="valU" class="stat-value">-</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Valor V (Y)</span>
+                    <span id="valV" class="stat-value">-</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Distância S²</span>
+                    <span id="valS" class="stat-value">-</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Resultado final</span>
+                    <span id="valFinal" class="stat-value">-</span>
+                </div>
+            </div>
+
+            <div class="info-box">
+                <span class="narration-title">Distribuição Gerada</span>
+                <div class="bell-curve-preview" id="histogramContainer">
+                    <!-- Histogram bits will be added here -->
+                </div>
+                <div class="code-snippet">
+                    return media + <span class="code-highlight">desvio</span> * (u * <span
+                        class="code-highlight">fator</span>);
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('animationCanvas');
+        const ctx = canvas.getContext('2d');
+        const narration = document.getElementById('narrationText');
+        const histogram = document.getElementById('histogramContainer');
+
+        // UI Elements
+        const btnPlay = document.getElementById('btnPlay');
+        const btnStep = document.getElementById('btnStep');
+        const btnReset = document.getElementById('btnReset');
+        const speedRange = document.getElementById('speedRange');
+
+        const displayU = document.getElementById('valU');
+        const displayV = document.getElementById('valV');
+        const displayS = document.getElementById('valS');
+        const displayFinal = document.getElementById('valFinal');
+
+        // State
+        let state = 'IDLE'; // IDLE, GENERATING, CALCULATING, FINISHED
+        let isPlaying = false;
+        let points = [];
+        let gaussianPoints = [];
+        let histogramBins = new Array(50).fill(0);
+
+        let u, v, s2, finalVal;
+        let animationStep = 0;
+        let lastTime = 0;
+
+        function resize() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function drawGrid() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const scale = 200;
+
+            // Square [-1, 1]
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.strokeRect(centerX - scale, centerY - scale, scale * 2, scale * 2);
+
+            // Circle
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, scale, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(0, 242, 255, 0.3)';
+            ctx.stroke();
+
+            // Axes
+            ctx.beginPath();
+            ctx.moveTo(centerX - scale - 20, centerY);
+            ctx.lineTo(centerX + scale + 20, centerY);
+            ctx.moveTo(centerX, centerY - scale - 20);
+            ctx.lineTo(centerX, centerY + scale + 20);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.stroke();
+
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.font = '10px Inter';
+            ctx.fillText('-1', centerX - scale, centerY + 15);
+            ctx.fillText('1', centerX + scale, centerY + 15);
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGrid();
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const scale = 200;
+
+            // Draw all previous points
+            points.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(centerX + p.u * scale, centerY - p.v * scale, 3, 0, Math.PI * 2);
+                ctx.fillStyle = p.valid ? 'rgba(57, 255, 20, 0.2)' : 'rgba(255, 49, 49, 0.2)';
+                ctx.fill();
+            });
+
+            // Draw current point if animating
+            if (state === 'GENERATING' || state === 'CALCULATING') {
+                ctx.beginPath();
+                ctx.arc(centerX + u * scale, centerY - v * scale, 8, 0, Math.PI * 2);
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Draw radius line
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.lineTo(centerX + u * scale, centerY - v * scale);
+                ctx.strokeStyle = s2 <= 1 ? 'var(--accent-success)' : 'var(--accent-error)';
+                ctx.stroke();
+            }
+        }
+
+        function updateHistogram() {
+            histogram.innerHTML = '';
+            const max = Math.max(...histogramBins, 1);
+            histogramBins.forEach((count, i) => {
+                const bar = document.createElement('div');
+                const height = (count / max) * 100;
+                bar.style.cssText = `
+                    position: absolute;
+                    bottom: 0;
+                    left: ${i * 2}%;
+                    width: 1.5%;
+                    height: ${height}%;
+                    background: var(--accent-primary);
+                    opacity: 0.7;
+                    transition: height 0.3s;
+                `;
+                histogram.appendChild(bar);
+            });
+        }
+
+        function nextStep() {
+            switch (animationStep) {
+                case 0: // Throw dart
+                    u = Math.random() * 2 - 1;
+                    v = Math.random() * 2 - 1;
+                    s2 = u * u + v * v;
+                    state = 'GENERATING';
+                    displayU.innerText = u.toFixed(4);
+                    displayV.innerText = v.toFixed(4);
+                    displayS.innerText = s2.toFixed(4);
+                    narration.innerText = `Lançando dardo... Coordenadas (u=${u.toFixed(2)}, v=${v.toFixed(2)}). Calculando Pitágoras (s² = u² + v²)...`;
+                    animationStep = 1;
+                    break;
+
+                case 1: // Validate
+                    if (s2 >= 1 || s2 === 0) {
+                        narration.innerText = `REJEITADO! A distância (s² = ${s2.toFixed(2)}) é maior que 1. O dardo caiu fora do círculo. Vamos tentar de novo.`;
+                        points.push({ u, v, valid: false });
+                        animationStep = 0;
+                    } else {
+                        narration.innerText = `ACEITO! O dardo caiu dentro do círculo unitário (s² < 1). Agora vamos aplicar a matemática de Box-Muller para "puxar" esse ponto para a curva de Gauss.`;
+                        points.push({ u, v, valid: true });
+                        animationStep = 2;
+                    }
+                    break;
+
+                case 2: // Calculate factor
+                    const factor = Math.sqrt(-2 * Math.log(s2) / s2);
+                    finalVal = u * factor;
+                    displayFinal.innerText = finalVal.toFixed(4);
+
+                    // Add to histogram (scale -3 to 3 to index 0-49)
+                    const bin = Math.floor(((finalVal + 3) / 6) * 50);
+                    if (bin >= 0 && bin < 50) histogramBins[bin]++;
+
+                    narration.innerText = `Aplicando Logaritmo e Raiz Quadrada... O fator de escala é ${factor.toFixed(2)}. O resultado final é ${finalVal.toFixed(2)}. Veja como ele se encaixa na curva abaixo!`;
+                    updateHistogram();
+                    animationStep = 0;
+                    break;
+            }
+            draw();
+        }
+
+        function loop(time) {
+            if (isPlaying) {
+                const speed = (101 - speedRange.value) * 10;
+                if (time - lastTime > speed) {
+                    nextStep();
+                    lastTime = time;
+                }
+            }
+            requestAnimationFrame(loop);
+        }
+
+        btnPlay.onclick = () => {
+            isPlaying = !isPlaying;
+            btnPlay.innerText = isPlaying ? 'Pause' : 'Play';
+            btnPlay.classList.toggle('primary', !isPlaying);
+        };
+
+        btnStep.onclick = nextStep;
+
+        btnReset.onclick = () => {
+            points = [];
+            histogramBins = new Array(50).fill(0);
+            updateHistogram();
+            animationStep = 0;
+            displayU.innerText = '-';
+            displayV.innerText = '-';
+            displayS.innerText = '-';
+            displayFinal.innerText = '-';
+            narration.innerText = 'Resetado. Pronto para recomeçar.';
+            draw();
+        };
+
+        draw();
+        requestAnimationFrame(loop);
+
+    </script>
+</body>
+
+</html>

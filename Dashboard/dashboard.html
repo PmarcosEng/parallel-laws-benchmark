@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard — Amdahl &amp; Gustafson Benchmark</title>
+<style>
+:root{--bg:#0f172a;--sf:#1e293b;--bd:#334155;--tx:#e2e8f0;--mt:#94a3b8;--acc:#60a5fa}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column}
+#hdr{position:sticky;top:0;z-index:200;background:var(--bg);border-bottom:1px solid var(--bd);padding:.75rem 1.5rem;display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap}
+#hdr h1{font-size:1.05rem;font-weight:700;flex-shrink:0}
+.tabs{display:flex;gap:.25rem}
+.tab{background:transparent;border:1px solid var(--bd);color:var(--mt);padding:.35rem .85rem;border-radius:.35rem;cursor:pointer;font-size:.82rem;transition:all .15s}
+.tab.active,.tab:hover{background:var(--acc);color:#fff;border-color:var(--acc)}
+#dropzone{margin:.75rem 1.5rem 0;border:2px dashed var(--bd);border-radius:.5rem;padding:1rem 1.5rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;cursor:pointer;transition:border-color .2s}
+#dropzone.over{border-color:var(--acc)}
+#dropzone:hover{border-color:#475569}
+.drop-hint{color:var(--mt);font-size:.82rem}
+.drop-hint b{color:var(--tx)}
+#drop-input{display:none}
+#run-list{display:flex;flex-wrap:wrap;gap:.5rem;padding:.5rem 1.5rem}
+.run-tag{background:var(--sf);border:1px solid var(--bd);border-radius:.35rem;padding:.2rem .6rem;font-size:.75rem;display:flex;align-items:center;gap:.4rem}
+.run-dot{width:.55rem;height:.55rem;border-radius:50%;flex-shrink:0}
+.run-badge{background:#1d4ed820;color:var(--acc);border:1px solid #1d4ed840;border-radius:.2rem;padding:.05rem .35rem;font-size:.65rem}
+#content{flex:1;padding:1rem 1.5rem 3rem;overflow-y:auto}
+.panel{display:none}.panel.active{display:block}
+.sec{margin-bottom:2rem}
+.sh{display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem}
+.sn{background:#1d4ed8;color:#fff;font-weight:700;font-size:.8rem;width:1.6rem;height:1.6rem;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.st{font-size:.95rem;font-weight:600}
+.exp{font-size:.8rem;color:var(--mt);line-height:1.6;margin-bottom:.75rem;border-left:3px solid var(--bd);padding-left:.6rem;max-width:720px}
+.cb{background:var(--sf);border:1px solid var(--bd);border-radius:.5rem;padding:.85rem 1rem}
+.cbt{font-size:.68rem;color:var(--mt);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem}
+.cb canvas{max-height:260px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem}
+.run-sel{background:var(--sf);border:1px solid var(--bd);color:var(--tx);border-radius:.35rem;padding:.3rem .6rem;font-size:.82rem;margin-bottom:1rem}
+table{width:100%;border-collapse:collapse;font-size:.8rem}
+th{background:var(--bg);color:var(--mt);text-align:left;padding:.35rem .6rem;border-bottom:1px solid var(--bd);font-weight:500;font-size:.7rem;text-transform:uppercase}
+td{padding:.35rem .6rem;border-bottom:1px solid var(--bd)}
+.ok{background:#14532d33;color:#86efac}.wa{background:#78350f33;color:#fde68a}.ba{background:#7f1d1d33;color:#fca5a5}
+.gpu-highlight{display:flex;gap:1rem;flex-wrap:wrap;margin-top:.5rem}
+.gpu-card{background:var(--sf);border:1px solid #7c3aed44;border-radius:.5rem;padding:.85rem 1.1rem;min-width:180px}
+.gpu-card .lbl{font-size:.7rem;color:var(--mt);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.3rem}
+.gpu-card .val{font-size:2rem;font-weight:800;color:#a78bfa;line-height:1}
+.gpu-card .sub{font-size:.72rem;color:var(--mt);margin-top:.3rem}
+.cmp-checks{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.75rem}
+.cmp-check{display:flex;align-items:center;gap:.4rem;background:var(--sf);border:1px solid var(--bd);border-radius:.3rem;padding:.25rem .5rem;font-size:.78rem;cursor:pointer}
+.cmp-check input{accent-color:var(--acc)}
+.type-toggle{display:flex;gap:.3rem;margin-bottom:.75rem}
+.tgl{background:var(--sf);border:1px solid var(--bd);color:var(--mt);padding:.3rem .8rem;border-radius:.3rem;cursor:pointer;font-size:.8rem}
+.tgl.active{background:var(--acc);color:#fff;border-color:var(--acc)}
+.empty{color:var(--mt);font-size:.85rem;padding:2rem;text-align:center;background:var(--sf);border:1px dashed var(--bd);border-radius:.5rem}
+/* Panorama */
+.tier-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1rem}
+.tier-card{background:var(--sf);border:1px solid var(--bd);border-radius:.5rem;padding:.85rem 1rem}
+.tier-card .tc-hd{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--mt);margin-bottom:.5rem;border-bottom:1px solid var(--bd);padding-bottom:.35rem}
+.tier-card .tc-main{font-size:1.6rem;font-weight:800;line-height:1.1}
+.tier-card .tc-sub{font-size:.72rem;color:var(--mt);margin-top:.3rem}
+.tier-card .tc-row{display:flex;justify-content:space-between;font-size:.78rem;margin-top:.35rem;padding-top:.25rem;border-top:1px solid var(--bd)}
+.pj-row{display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem}
+.pj-row label{font-size:.82rem;color:var(--mt);white-space:nowrap}
+.pj-row input[type=range]{flex:1;accent-color:var(--acc)}
+.pj-row span{font-size:.82rem;min-width:4rem;text-align:right;color:var(--tx)}
+.ins-list{list-style:none;display:flex;flex-direction:column;gap:.5rem}
+.ins-list li{background:var(--sf);border-left:3px solid var(--acc);border-radius:0 .3rem .3rem 0;padding:.4rem .7rem;font-size:.82rem;line-height:1.5}
+.ins-list li.ins-warn{border-left-color:#fbbf24}
+.ins-list li.ins-ok{border-left-color:#34d399}
+.ins-list li.ins-gpu{border-left-color:#a78bfa}
+.fp-bar-wrap{display:flex;flex-direction:column;gap:.4rem}
+.fp-row{display:flex;align-items:center;gap:.5rem;font-size:.78rem}
+.fp-row .fp-lbl{min-width:120px;color:var(--mt)}
+.fp-row .fp-bar{flex:1;height:.55rem;background:var(--bd);border-radius:.3rem;overflow:hidden}
+.fp-row .fp-fill{height:100%;border-radius:.3rem;transition:width .4s}
+.fp-row .fp-val{min-width:3rem;text-align:right;color:var(--tx)}
+/* Hardware Compare */
+.hw-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem;margin-bottom:1rem}
+.hw-card{background:var(--sf);border:1px solid var(--bd);border-radius:.5rem;padding:.75rem 1rem}
+.hw-card .hw-name{font-size:.85rem;font-weight:700;margin-bottom:.4rem}
+.hw-card .hw-spec{font-size:.72rem;color:var(--mt);line-height:1.7}
+.hw-card .hw-runs{font-size:.68rem;color:var(--acc);margin-top:.3rem}
+.norm-toggle span{font-size:.8rem;color:var(--mt);margin-right:.3rem}
+.inline-bar-wrap{position:relative;width:100%;min-width:70px;height:1.4rem;background:var(--sf);border-radius:3px;overflow:hidden;border:1px solid var(--bd)}
+.inline-bar-fill{position:absolute;top:0;left:0;height:100%;transition:width .3s ease-out;opacity:0.8}
+.inline-bar-text{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;color:var(--tx);z-index:2;text-shadow:0 0 2px var(--bg),0 0 4px var(--bg)}
+.heatmap-cell{font-weight:700;text-align:center;color:#fff;text-shadow:0 0 2px rgba(0,0,0,0.8);border:1px solid var(--bg)}
+@media(max-width:1100px){.tier-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:860px){.g3{grid-template-columns:1fr}.g2{grid-template-columns:1fr}.tier-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<div id="hdr">
+  <h1>Benchmark &mdash; Amdahl &amp; Gustafson</h1>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('busca')">Busca de Eventos</button>
+    <button class="tab" onclick="switchTab('matematica')">Matem&aacute;tica Densa</button>
+    <button class="tab" onclick="switchTab('comparar')">Comparar Runs</button>
+    <button class="tab" onclick="switchTab('panorama')">Panorama Geral</button>
+    <button class="tab" onclick="switchTab('hardware')">Comparar Hardware</button>
+  </div>
+</div>
+
+<div id="dropzone" onclick="document.getElementById('drop-input').click()">
+  <span class="drop-hint"><b>Arraste</b> arquivos JSON de runs aqui ou <b>clique</b> para selecionar</span>
+  <input id="drop-input" type="file" multiple accept=".json">
+</div>
+<div id="run-list"></div>
+
+<div id="content">
+
+  <!-- TAB BUSCA -->
+  <div id="panel-busca" class="panel active">
+    <div class="sec">
+      <div class="sh"><div class="sn">1</div><div class="st">Run visualizado</div></div>
+      <select id="sel-busca" class="run-sel" onchange="renderBusca()">
+        <option value="">Carregue um arquivo JSON de busca...</option>
+      </select>
+    </div>
+    <div id="busca-content">
+      <div class="empty">Nenhum run de busca carregado. Arraste um arquivo <b>runs/busca_cpu/*.json</b> ou <b>runs/busca_cuda/*.json</b> acima.</div>
+    </div>
+  </div>
+
+  <!-- TAB MATEMATICA -->
+  <div id="panel-matematica" class="panel">
+    <div class="sec">
+      <div class="sh"><div class="sn">1</div><div class="st">Run visualizado</div></div>
+      <select id="sel-mat" class="run-sel" onchange="renderMat()">
+        <option value="">Carregue um arquivo JSON de matem&aacute;tica...</option>
+      </select>
+    </div>
+    <div id="mat-content">
+      <div class="empty">Nenhum run de matem&aacute;tica carregado. Arraste um arquivo <b>runs/matematica_cpu/*.json</b> ou <b>runs/matematica_cuda/*.json</b> acima.</div>
+    </div>
+  </div>
+
+  <!-- TAB PANORAMA -->
+  <div id="panel-panorama" class="panel">
+    <div id="pan-content"><div class="empty">Carregue runs de qualquer tipo para gerar o panorama.</div></div>
+  </div>
+
+  <!-- TAB HARDWARE -->
+  <div id="panel-hardware" class="panel">
+    <div id="hw-content"><div class="empty">Carregue runs de <b>m&aacute;quinas diferentes</b> para comparar. O dashboard agrupa automaticamente por hardware (cpu_nome + gpu_nome).</div></div>
+  </div>
+
+  <!-- TAB COMPARAR -->
+  <div id="panel-comparar" class="panel">
+    <div class="sec">
+      <div class="sh"><div class="sn">1</div><div class="st">Tipo de simula&ccedil;&atilde;o</div></div>
+      <div class="type-toggle">
+        <button class="tgl active" id="cmp-type-busca" onclick="setCmpType('busca')">Busca</button>
+        <button class="tgl" id="cmp-type-mat" onclick="setCmpType('matematica')">Matem&aacute;tica</button>
+      </div>
+    </div>
+    <div class="sec">
+      <div class="sh"><div class="sn">2</div><div class="st">Selecionar runs</div></div>
+      <div id="cmp-checks" class="cmp-checks">
+        <span style="color:var(--mt);font-size:.8rem">Nenhum run carregado ainda.</span>
+      </div>
+    </div>
+    <div id="cmp-content">
+      <div class="empty">Selecione ao menos um run acima para gerar a compara&ccedil;&atilde;o.</div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const LOADED_RUNS=[];
+const CHARTS={};
+const PALETTE=['#3b82f6','#f59e0b','#10b981','#8b5cf6','#ef4444','#0ea5e9','#ec4899','#14b8a6','#f97316','#84cc16'];
+let g_cmp_type='busca';
+
+function fv(n){return n>=1e6?(n/1e6)%1===0?(n/1e6).toFixed(0)+'M':(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3)%1===0?(n/1e3).toFixed(0)+'K':(n/1e3).toFixed(1)+'K':String(n);}
+function uniq(a){return[...new Set(a)];}
+function find(run,algo,vol,mode,th){return(run.resultados||[]).find(r=>r.algoritmo===algo&&r.volume===vol&&r.modo===mode&&(th==null||r.threads===th));}
+function amdahlCap(N,fs){return 1/(fs+(1-fs)/N);}
+function estimateFs(run,algo,vol){
+  const candidates=(run.resultados||[]).filter(r=>r.algoritmo===algo&&r.volume===vol&&r.modo==='openmp');
+  if(!candidates.length)return 0.5;
+  const best=candidates.reduce((a,b)=>b.speedup>a.speedup?b:a);
+  if(best.speedup<=1||best.threads<=1)return 0.5;
+  const v=(best.threads/best.speedup-1)/(best.threads-1);
+  return Math.max(0.001,Math.min(0.999,v));
+}
+
+const DEF_OPT={responsive:true,maintainAspectRatio:true,
+  plugins:{legend:{labels:{color:'#94a3b8',font:{size:10}}},tooltip:{mode:'index',intersect:false}},
+  scales:{x:{ticks:{color:'#64748b'},grid:{color:'#1e293b46'}},y:{ticks:{color:'#64748b'},grid:{color:'#1e293b46'}}}};
+
+function mkChart(id,type,labels,datasets,extra){
+  if(CHARTS[id]){CHARTS[id].destroy();delete CHARTS[id];}
+  const el=document.getElementById(id);if(!el)return;
+  const sc=JSON.parse(JSON.stringify(DEF_OPT.scales));
+  if(extra&&extra.ylog)sc.y.type='logarithmic';
+  if(extra&&extra.yTitle)sc.y.title={display:true,text:extra.yTitle,color:'#64748b'};
+  if(extra&&extra.xTitle)sc.x.title={display:true,text:extra.xTitle,color:'#64748b'};
+  if(extra&&extra.yMin!=null)sc.y.min=extra.yMin;
+  CHARTS[id]=new Chart(el,{type,data:{labels,datasets},options:{...DEF_OPT,scales:sc}});
+}
+
+/* FILE LOADING */
+function addRun(file){
+  file.text().then(txt=>{
+    try{
+      const d=JSON.parse(txt);
+      const idx=LOADED_RUNS.length;
+      const col=PALETTE[idx%PALETTE.length];
+      const sim=d.simulacao||'busca';
+      const label=d.run_id||(file.name.replace(/\.json$/i,''));
+      LOADED_RUNS.push({label,data:d,col,sim,file:file.name});
+      refreshSelectors();refreshRunList();refreshCmpChecks();
+      // atualiza hardware tab se já estiver ativo
+      if(document.getElementById('panel-hardware').classList.contains('active'))renderHardware();
+      if(idx===0)switchTab(sim);
+    }catch(e){alert('Erro ao ler '+file.name+': '+e.message);}
+  });
+}
+const dz=document.getElementById('dropzone');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('over');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('over'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('over');[...e.dataTransfer.files].forEach(addRun);});
+document.getElementById('drop-input').addEventListener('change',e=>[...e.target.files].forEach(addRun));
+
+function refreshRunList(){
+  document.getElementById('run-list').innerHTML=LOADED_RUNS.map(r=>`<span class="run-tag"><span class="run-dot" style="background:${r.col}"></span>${r.label}<span class="run-badge">${r.sim}</span>${r.data.build?`<span class="run-badge">${r.data.build}</span>`:''}</span>`).join('');
+}
+function refreshSelectors(){
+  ['sel-busca','sel-mat'].forEach(id=>{
+    const el=document.getElementById(id);
+    const sim=id==='sel-busca'?'busca':'matematica';
+    const runs=LOADED_RUNS.filter(r=>r.sim===sim);
+    if(runs.length){
+      el.innerHTML=runs.map(r=>`<option value="${LOADED_RUNS.indexOf(r)}">${r.label} [${r.data.build||'?'}]</option>`).join('');
+      el.value=String(LOADED_RUNS.indexOf(runs[runs.length-1]));
+    }else{
+      el.innerHTML=`<option value="">Carregue um JSON de ${sim}...</option>`;
+    }
+  });
+  renderBusca();renderMat();
+  if(document.getElementById('panel-panorama').classList.contains('active'))renderPanorama();
+}
+function refreshCmpChecks(){
+  const sim=g_cmp_type;
+  const runs=LOADED_RUNS.filter(r=>r.sim===sim);
+  document.getElementById('cmp-checks').innerHTML=runs.length?
+    runs.map(r=>{const gi=LOADED_RUNS.indexOf(r);return `<label class="cmp-check"><input type="checkbox" checked onchange="renderCmp()" data-idx="${gi}"><span class="run-dot" style="background:${r.col}"></span>${r.label}</label>`;}).join(''):
+    `<span style="color:var(--mt);font-size:.8rem">Nenhum run de ${sim} carregado ainda.</span>`;
+  renderCmp();
+}
+
+/* TAB SWITCHING */
+function switchTab(name){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  const tabs={busca:0,matematica:1,comparar:2,panorama:3,hardware:4};
+  if(tabs[name]!=null)document.querySelectorAll('.tab')[tabs[name]].classList.add('active');
+  if(name==='comparar')refreshCmpChecks();
+  if(name==='panorama')renderPanorama();
+  if(name==='hardware')renderHardware();
+}
+
+/* ── BUSCA ── */
+const ALGO_BUSCA=['linear','binaria','hash','reduce'];
+const ALGO_LABEL={linear:'Busca Linear',binaria:'Busca Bin\u00e1ria',hash:'Hash Lookup',reduce:'Reduce Paralelo'};
+const ALGO_COLOR={linear:'#60a5fa',binaria:'#34d399',hash:'#fbbf24',reduce:'#f87171'};
+const VOL_COLORS=['#94a3b8','#60a5fa','#34d399','#fbbf24','#f87171','#c084fc','#fb923c','#38bdf8'];
+
+function renderBusca(){
+  const idx=parseInt(document.getElementById('sel-busca').value);
+  const cont=document.getElementById('busca-content');
+  if(isNaN(idx)||!LOADED_RUNS[idx]){cont.innerHTML='<div class="empty">Nenhum run de busca carregado.</div>';return;}
+  const run=LOADED_RUNS[idx].data;
+  const VS=uniq((run.resultados||[]).map(r=>r.volume)).sort((a,b)=>a-b);
+  const hasCuda=(run.resultados||[]).some(r=>r.modo==='cuda');
+  const gc=(run.hardware||{}).gpu_cuda_cores||896;
+  const threadsList=uniq((run.resultados||[]).filter(r=>r.modo==='openmp').map(r=>r.threads)).sort((a,b)=>a-b);
+  const maxTh=threadsList.length?Math.max(...threadsList):1;
+  const XMOD=[{m:'serial',t:1},...threadsList.map(t=>({m:'openmp',t})),{m:'gpu_sim',t:gc}];
+  if(hasCuda)XMOD.push({m:'cuda',t:gc});
+  const XLBL=XMOD.map(x=>x.m==='serial'?'Serial':x.m==='gpu_sim'?'GPU Sim':x.m==='cuda'?'GPU Real':x.t+'t');
+
+  cont.innerHTML=`
+  <div class="sec"><div class="sh"><div class="sn">2</div><div class="st">Tempo serial &times; volume (escala log)</div></div>
+    <p class="exp">Tempo de execu&ccedil;&atilde;o serial para cada algoritmo. Eixo Y logar&iacute;tmico: um degrau = 10&times;. Hash O(1) quase horizontal; Linear O(n) sobe claramente.</p>
+    <div class="cb"><div class="cbt">Tempo serial &times; volume</div><canvas id="bc1"></canvas></div></div>
+  <div class="sec"><div class="sh"><div class="sn">3</div><div class="st">Speedup &times; modo de execu&ccedil;&atilde;o</div></div>
+    <p class="exp">Speedup = T_serial / T_paralelo. Linha cinza = teto te&oacute;rico de Amdahl estimado via inversao da f&oacute;rmula no melhor speedup OpenMP. Linha vermelha = break-even (1&times;).</p>
+    <div class="g3">
+      <div class="cb"><div class="cbt">Busca Linear</div><canvas id="bc2a"></canvas></div>
+      <div class="cb"><div class="cbt">Busca Bin&aacute;ria</div><canvas id="bc2b"></canvas></div>
+      <div class="cb"><div class="cbt">Hash Lookup</div><canvas id="bc2c"></canvas></div>
+    </div>
+    <div style="margin-top:1rem"><div class="cb"><div class="cbt" style="color:#f87171">Reduce Paralelo &mdash; fp~100%, ideal para GPU</div><canvas id="bc2d"></canvas></div></div></div>
+  <div class="sec"><div class="sh"><div class="sn">4</div><div class="st">Lei de Gustafson: speedup max threads &times; volume</div></div>
+    <p class="exp">Gustafson: aumentar o volume junto com os threads mant&eacute;m ou melhora o speedup. Linha subindo = boa escalabilidade fraca.</p>
+    <div class="cb"><div class="cbt">Speedup ${maxTh}t &times; volume</div><canvas id="bc3"></canvas></div></div>
+  <div class="sec"><div class="sh"><div class="sn">5</div><div class="st">Tabela resumo</div></div>
+    <p class="exp"><span style="color:#86efac">Verde</span> &ge; 2&times;, <span style="color:#fde68a">Amarelo</span> 1-2&times;, <span style="color:#fca5a5">Vermelho</span> &lt; 1&times;</p>
+    <div class="cb" id="bc4-tbl"></div></div>`;
+
+  mkChart('bc1','line',VS.map(fv),ALGO_BUSCA.map(algo=>({label:ALGO_LABEL[algo],data:VS.map(v=>{const r=find(run,algo,v,'serial',1);return r?r.tempo_s:null;}),borderColor:ALGO_COLOR[algo],backgroundColor:ALGO_COLOR[algo]+'33',pointRadius:5,tension:.3,fill:false})),{ylog:true,xTitle:'Volume de dados',yTitle:'Tempo (s) — escala log'});
+
+  ALGO_BUSCA.forEach((algo,ai)=>{
+    const cid=['bc2a','bc2b','bc2c','bc2d'][ai];
+    const maxV=Math.max(...VS);const fs=estimateFs(run,algo,maxV);
+    const XMOD_algo=[{m:'serial',t:1},...threadsList.map(t=>({m:'openmp',t}))];
+    if(hasCuda)XMOD_algo.push({m:'cuda',t:gc});
+    const XLBL_algo=XMOD_algo.map(x=>x.m==='serial'?'Serial':x.m==='cuda'?'GPU Real':x.t+'t');
+    const thNums=XMOD_algo.map(x=>x.t);
+    const ds=VS.map((vol,vi)=>({label:fv(vol)+' ev',data:XMOD_algo.map(x=>{const r=find(run,algo,vol,x.m,x.t);return r?r.speedup:null;}),borderColor:VOL_COLORS[vi]||'#94a3b8',backgroundColor:(VOL_COLORS[vi]||'#94a3b8')+'33',pointRadius:5,tension:0,fill:false,spanGaps:true}));
+    ds.push({label:'Teto Amdahl',data:thNums.map(n=>amdahlCap(n,fs)),borderColor:'#94a3b8',borderDash:[7,4],borderWidth:1.5,pointRadius:0,fill:false});
+    ds.push({label:'Break-even',data:XLBL_algo.map(()=>1),borderColor:'#ef4444',borderDash:[3,3],borderWidth:1,pointRadius:0,fill:false});
+    const algoHasCuda=hasCuda&&(run.resultados||[]).some(r=>r.algoritmo===algo&&r.modo==='cuda');
+    if(!algoHasCuda&&hasCuda){const cbtEl=document.getElementById(cid).closest('.cb').querySelector('.cbt');if(cbtEl)cbtEl.innerHTML+=' <span style="font-size:.65rem;color:var(--mt);opacity:.7">(GPU Real: N/A \u2014 algoritmo sequencial)</span>';}
+    mkChart(cid,'line',XLBL_algo,ds,{xTitle:'Modo',yTitle:'Speedup S(N)',yMin:0});
+  });
+
+  const gc3ds=ALGO_BUSCA.map(algo=>({label:ALGO_LABEL[algo]+' ('+maxTh+'t)',data:VS.map(v=>{const r=find(run,algo,v,'openmp',maxTh);return r?r.speedup:null;}),borderColor:ALGO_COLOR[algo],backgroundColor:ALGO_COLOR[algo]+'33',pointRadius:6,tension:.3,fill:false}));
+  gc3ds.push({label:'GPU Sim (linear)',data:VS.map(v=>{const r=find(run,'linear',v,'gpu_sim',gc);return r?r.speedup:null;}),borderColor:'#94a3b8',backgroundColor:'#94a3b833',pointRadius:5,borderDash:[5,3],tension:.3,fill:false});
+  if(hasCuda){gc3ds.push({label:'GPU Real—linear',data:VS.map(v=>{const r=find(run,'linear',v,'cuda',gc);return r?r.speedup:null;}),borderColor:'#a78bfa',backgroundColor:'#a78bfa33',pointRadius:7,pointStyle:'star',tension:.3,fill:false});gc3ds.push({label:'GPU Real—reduce',data:VS.map(v=>{const r=find(run,'reduce',v,'cuda',gc);return r?r.speedup:null;}),borderColor:'#f87171',backgroundColor:'#f8717133',pointRadius:7,pointStyle:'triangle',tension:.3,fill:false});}
+  gc3ds.push({label:'Break-even',data:VS.map(()=>1),borderColor:'#ef4444',borderDash:[3,3],borderWidth:1,pointRadius:0,fill:false});
+  mkChart('bc3','line',VS.map(fv),gc3ds,{xTitle:'Volume de dados',yTitle:'Speedup S(N)'});
+
+  let h='<table><thead><tr><th>Algoritmo</th>';
+  VS.forEach(v=>h+=`<th>OpenMP ${maxTh}t &mdash; ${fv(v)}</th>`);if(hasCuda)VS.forEach(v=>h+=`<th style="color:#a78bfa">GPU Real &mdash; ${fv(v)}</th>`);h+='</tr></thead><tbody>';
+  ALGO_BUSCA.forEach(algo=>{h+=`<tr><td><b>${ALGO_LABEL[algo]}</b></td>`;VS.forEach(v=>{const r=find(run,algo,v,'openmp',maxTh);const sp=r?r.speedup:null;const cl=sp==null?'':sp>=2?'ok':sp>=1?'wa':'ba';h+=`<td class="${cl}">${sp!=null?sp.toFixed(2)+'x':'-'}</td>`;});if(hasCuda)VS.forEach(v=>{const r=find(run,algo,v,'cuda',gc);const sp=r?r.speedup:null;const cl=sp==null?'':sp>=2?'ok':sp>=1?'wa':'ba';h+=`<td class="${cl}" style="outline:1px solid #7c3aed44">${sp!=null?sp.toFixed(2)+'x':'-'}</td>`;});h+='</tr>';});
+  document.getElementById('bc4-tbl').innerHTML=h+'</tbody></table>';
+}
+
+/* ── MATEMATICA ── */
+const ALGO_MAT=['montecarlo','mandelbrot'];
+const ALGO_MAT_LABEL={montecarlo:'Monte Carlo \u03c0',mandelbrot:'Mandelbrot 2D'};
+const ALGO_MAT_COLOR={montecarlo:'#60a5fa',mandelbrot:'#fbbf24'};
+
+function renderMat(){
+  const idx=parseInt(document.getElementById('sel-mat').value);
+  const cont=document.getElementById('mat-content');
+  if(isNaN(idx)||!LOADED_RUNS[idx]){cont.innerHTML='<div class="empty">Nenhum run de matem\u00e1tica carregado.</div>';return;}
+  const run=LOADED_RUNS[idx].data;
+  const VS=uniq((run.resultados||[]).map(r=>r.volume)).sort((a,b)=>a-b);
+  const hasCuda=(run.resultados||[]).some(r=>r.modo==='cuda');
+  const gc=(run.hardware||{}).gpu_cuda_cores||896;
+  const threadsList=uniq((run.resultados||[]).filter(r=>r.modo==='openmp').map(r=>r.threads)).sort((a,b)=>a-b);
+  const maxTh=threadsList.length?Math.max(...threadsList):1;
+  const XMOD=[{m:'serial',t:1},...threadsList.map(t=>({m:'openmp',t})),{m:'gpu_sim',t:gc}];
+  if(hasCuda)XMOD.push({m:'cuda',t:gc});
+  const XLBL=XMOD.map(x=>x.m==='serial'?'Serial':x.m==='gpu_sim'?'GPU Sim':x.m==='cuda'?'GPU Real':x.t+'t');
+  const maxV=Math.max(...VS);
+
+  cont.innerHTML=`
+  <div class="sec"><div class="sh"><div class="sn">2</div><div class="st">Tempo serial &times; volume</div></div>
+    <p class="exp">Monte Carlo Pi: custo O(n) puro (amostragem LCG). Mandelbrot 2D: custo varia por pixel — bordas do conjunto s&atilde;o mais custosas.</p>
+    <div class="cb"><div class="cbt">Tempo serial &times; volume (escala log)</div><canvas id="mc1"></canvas></div></div>
+  <div class="sec"><div class="sh"><div class="sn">3</div><div class="st">Speedup &times; modo</div></div>
+    <p class="exp">Ambos t&ecirc;m fra&ccedil;&atilde;o paralela fp~100%. Monte Carlo: cada thread tem sua pr&oacute;pria sequ&ecirc;ncia LCG. Mandelbrot: schedule(dynamic,4) distribui linhas desbalanceadas entre threads.</p>
+    <div class="g2">
+      <div class="cb"><div class="cbt">Monte Carlo &pi;</div><canvas id="mc2a"></canvas></div>
+      <div class="cb"><div class="cbt">Mandelbrot 2D</div><canvas id="mc2b"></canvas></div>
+    </div></div>
+  <div class="sec"><div class="sh"><div class="sn">4</div><div class="st">Lei de Gustafson &times; volume</div></div>
+    <p class="exp">Com fp~100%, o speedup deve permanecer pr&oacute;ximo de N quando o volume cresce proporcionalmente.</p>
+    <div class="cb"><div class="cbt">Speedup ${maxTh}t &times; volume</div><canvas id="mc3"></canvas></div></div>
+  <div class="sec"><div class="sh"><div class="sn">5</div><div class="st">GPU vs CPU &mdash; maior volume (${fv(maxV)})</div></div>
+    <p class="exp">Speedup da GPU Real em rela&ccedil;&atilde;o ao serial CPU. Algoritmos com fp=100% s&atilde;o os mais beneficiados por GPU.</p>
+    <div class="gpu-highlight" id="mc-gpu-cards"></div></div>
+  <div class="sec"><div class="sh"><div class="sn">6</div><div class="st">Tabela resumo</div></div>
+    <div class="cb" id="mc4-tbl"></div></div>`;
+
+  mkChart('mc1','line',VS.map(fv),ALGO_MAT.map(algo=>({label:ALGO_MAT_LABEL[algo],data:VS.map(v=>{const r=find(run,algo,v,'serial',1);return r?r.tempo_s:null;}),borderColor:ALGO_MAT_COLOR[algo],backgroundColor:ALGO_MAT_COLOR[algo]+'33',pointRadius:5,tension:.3,fill:false})),{ylog:true,xTitle:'Volume',yTitle:'Tempo (s) — escala log'});
+
+  ALGO_MAT.forEach((algo,ai)=>{
+    const cid=['mc2a','mc2b'][ai];
+    const fs=estimateFs(run,algo,maxV);
+    const XMOD_algo=[{m:'serial',t:1},...threadsList.map(t=>({m:'openmp',t}))];
+    if(hasCuda)XMOD_algo.push({m:'cuda',t:gc});
+    const XLBL_algo=XMOD_algo.map(x=>x.m==='serial'?'Serial':x.m==='cuda'?'GPU Real':x.t+'t');
+    const thNums=XMOD_algo.map(x=>x.t);
+    const ds=VS.map((vol,vi)=>({label:fv(vol),data:XMOD_algo.map(x=>{const r=find(run,algo,vol,x.m,x.t);return r?r.speedup:null;}),borderColor:VOL_COLORS[vi]||'#94a3b8',backgroundColor:(VOL_COLORS[vi]||'#94a3b8')+'33',pointRadius:5,tension:0,fill:false,spanGaps:true}));
+    ds.push({label:'Teto Amdahl',data:thNums.map(n=>amdahlCap(n,fs)),borderColor:'#94a3b8',borderDash:[7,4],borderWidth:1.5,pointRadius:0,fill:false});
+    ds.push({label:'Break-even',data:XLBL_algo.map(()=>1),borderColor:'#ef4444',borderDash:[3,3],borderWidth:1,pointRadius:0,fill:false});
+    mkChart(cid,'line',XLBL_algo,ds,{xTitle:'Modo',yTitle:'Speedup S(N)',yMin:0});
+  });
+
+  const gc3ds=ALGO_MAT.map(algo=>({label:ALGO_MAT_LABEL[algo]+' ('+maxTh+'t)',data:VS.map(v=>{const r=find(run,algo,v,'openmp',maxTh);return r?r.speedup:null;}),borderColor:ALGO_MAT_COLOR[algo],backgroundColor:ALGO_MAT_COLOR[algo]+'33',pointRadius:6,tension:.3,fill:false}));
+  if(hasCuda)ALGO_MAT.forEach(algo=>gc3ds.push({label:ALGO_MAT_LABEL[algo]+' GPU',data:VS.map(v=>{const r=find(run,algo,v,'cuda',gc);return r?r.speedup:null;}),borderColor:algo==='montecarlo'?'#a78bfa':'#fb923c',backgroundColor:(algo==='montecarlo'?'#a78bfa':'#fb923c')+'33',pointRadius:7,pointStyle:'star',tension:.3,fill:false}));
+  gc3ds.push({label:'Break-even',data:VS.map(()=>1),borderColor:'#ef4444',borderDash:[3,3],borderWidth:1,pointRadius:0,fill:false});
+  mkChart('mc3','line',VS.map(fv),gc3ds,{xTitle:'Volume',yTitle:'Speedup S(N)'});
+
+  const cards=document.getElementById('mc-gpu-cards');
+  if(!hasCuda){cards.innerHTML='<span style="color:var(--mt);font-size:.82rem">GPU Real n\u00e3o dispon\u00edvel neste run (build CPU). Use benchmark_cuda.exe para dados CUDA.</span>';}
+  else{cards.innerHTML=ALGO_MAT.map(algo=>{const rC=find(run,algo,maxV,'cuda',gc);const sp=rC?rC.speedup:null;return `<div class="gpu-card"><div class="lbl">${ALGO_MAT_LABEL[algo]} &mdash; ${fv(maxV)}</div><div class="val">${sp!=null?sp.toFixed(1)+'x':'?'}</div><div class="sub">GPU Real vs serial CPU</div></div>`;}).join('');}
+
+  const modes=['serial',...threadsList.map(t=>'openmp_'+t),...(hasCuda?['cuda']:[])];
+  const modeLabel=m=>m==='serial'?'Serial':m.startsWith('openmp_')?m.replace('openmp_','')+'t OMP':'GPU Real';
+  let h='<table><thead><tr><th>Algoritmo</th><th>Volume</th>';modes.forEach(m=>h+=`<th>${modeLabel(m)}</th>`);h+='</tr></thead><tbody>';
+  ALGO_MAT.forEach(algo=>{VS.forEach(vol=>{h+=`<tr><td><b>${ALGO_MAT_LABEL[algo]}</b></td><td>${fv(vol)}</td>`;modes.forEach(m=>{let r;if(m==='serial')r=find(run,algo,vol,'serial',1);else if(m.startsWith('openmp_'))r=find(run,algo,vol,'openmp',parseInt(m.split('_')[1]));else r=find(run,algo,vol,'cuda',gc);const sp=r?r.speedup:null;const cl=sp==null?'':sp>=2?'ok':sp>=1?'wa':'ba';h+=`<td class="${cl}">${sp!=null?sp.toFixed(2)+'x':'-'}</td>`;});h+='</tr>';});});
+  document.getElementById('mc4-tbl').innerHTML=h+'</tbody></table>';
+}
+
+/* ══════════════════════════════════════════════
+   PANORAMA GERAL
+══════════════════════════════════════════════ */
+
+function renderPanorama(){
+  const cont=document.getElementById('pan-content');
+  if(!LOADED_RUNS.length){cont.innerHTML='<div class="empty">Carregue runs de qualquer tipo para gerar o panorama.</div>';return;}
+  
+  const groups={};
+  LOADED_RUNS.forEach(r=>{
+    const fp=hwFingerprint(r.data);
+    if(!groups[fp])groups[fp]={label:hwLabel(r.data),hw:r.data.hardware||{},runs:[]};
+    groups[fp].runs.push(r);
+  });
+  const fps=Object.keys(groups);
+  fps.forEach((fp,i)=>groups[fp].col=PALETTE[i%PALETTE.length]);
+
+  let html = `<div class="sec"><div class="sh"><div class="sn">1</div><div class="st">Hardwares em Avalia&ccedil;&atilde;o (${fps.length})</div></div><div class="hw-grid">`;
+  fps.forEach(fp=>{
+    const g=groups[fp]; const h=g.hw;
+    html += `<div class="hw-card" style="border-color:${g.col}55">
+      <div class="hw-name" style="color:${g.col}">${g.label}</div>
+      <div class="hw-spec">CPU: ${h.cpu_nome||'?'} &bull; ${h.cpu_nucleos||'?'}c / ${h.cpu_threads||'?'}t<br>GPU: ${h.gpu_nome||'?'} &bull; ${h.gpu_cuda_cores||'?'} CUDA cores</div>
+      <div class="hw-runs">${g.runs.length} run(s) analisado(s)</div>
+    </div>`;
+  });
+  html += `</div></div>`;
+
+  // Radar Chart Data Prep
+  const radarAxes = ['Busca Linear', 'Reduce Paralelo', 'Monte Carlo π', 'Mandelbrot 2D'];
+  const rKeys = [{s:'busca',a:'linear'}, {s:'busca',a:'reduce'}, {s:'matematica',a:'montecarlo'}, {s:'matematica',a:'mandelbrot'}];
+  
+  const getBestSp = (fp, sim, algo) => {
+     const g = groups[fp];
+     const r = g.runs.filter(x=>x.sim===sim).pop();
+     if(!r) return 0;
+     const vs=uniq((r.data.resultados||[]).map(x=>x.volume)).sort((a,b)=>a-b);
+     const maxV = vs.pop();
+     if(!maxV) return 0;
+     const ths=uniq((r.data.resultados||[]).filter(x=>x.modo==='openmp').map(x=>x.threads)).sort((a,b)=>a-b);
+     const mt=ths.pop()||1;
+     const gc=r.data.hardware?.gpu_cuda_cores||896;
+     let best = 0;
+     ['openmp','cuda'].forEach(m=>{
+        const th = m==='openmp'?mt:gc;
+        const x = find(r.data,algo,maxV,m,th);
+        if(x && x.speedup>best) best = x.speedup;
+     });
+     return best;
+  };
+
+  const radarDataRaw = fps.map(fp => rKeys.map(k => getBestSp(fp, k.s, k.a)));
+  const maxAxis = [0,0,0,0];
+  radarDataRaw.forEach(rd => rd.forEach((v,i)=>{ if(v>maxAxis[i]) maxAxis[i]=v; }));
+  
+  // Heatmap Table Prep
+  const allAlgos = [...ALGO_BUSCA.map(a=>({s:'busca', a, lbl:ALGO_LABEL[a]})), ...ALGO_MAT.map(a=>({s:'matematica', a, lbl:ALGO_MAT_LABEL[a]}))];
+  
+  html += `<div class="sec"><div class="sh"><div class="sn">2</div><div class="st">Footprint de Desempenho (Radar Anal&iacute;tico)</div></div>
+    <p class="exp">Comparativo normalizado pelo limite superior (maior speedup) registrado em cada eixo. 100% (borda externa) indica que o hardware domina aquele algoritmo.</p>
+    <div class="cb" style="display:flex;justify-content:center"><div style="width:100%;max-width:550px;height:450px"><canvas id="pn-radar"></canvas></div></div>
+  </div>`;
+
+  html += `<div class="sec"><div class="sh"><div class="sn">3</div><div class="st">Heatmap Anal&iacute;tico &mdash; Speedup M&aacute;ximo</div></div>
+    <p class="exp">Tabela de correla&ccedil;&atilde;o direta de limites alcan&ccedil;ados no volume m&aacute;ximo de cada simula&ccedil;&atilde;o. A paleta de temperatura varia do fundo frio (baixo desempenho) para vermelho quente (alto desempenho), facilitando a percep&ccedil;&atilde;o de efici&ecirc;ncia paralela (Lei de Gustafson).</p>
+    <div class="cb" style="overflow-x:auto" id="pan-assoc"></div>
+  </div>`;
+  
+  cont.innerHTML=html;
+
+  // Render Radar
+  if(document.getElementById('pn-radar')){
+    const dsRadar = fps.map((fp, i) => {
+      const dataNorm = radarDataRaw[i].map((v, idx) => maxAxis[idx] > 0 ? (v/maxAxis[idx])*100 : 0);
+      return {
+        label: groups[fp].label,
+        data: dataNorm,
+        borderColor: groups[fp].col,
+        backgroundColor: groups[fp].col + '44',
+        borderWidth: 2,
+        pointRadius: 4,
+        pointBackgroundColor: groups[fp].col
+      };
+    });
+    mkChart('pn-radar', 'radar', radarAxes, dsRadar, {});
+    // Patch options for radar specifically
+    if(CHARTS['pn-radar'] && CHARTS['pn-radar'].options.scales){
+      CHARTS['pn-radar'].options.scales.r = { 
+         angleLines: { color: 'rgba(255,255,255,0.15)' }, 
+         grid: { color: 'rgba(255,255,255,0.1)' }, 
+         pointLabels: { color: '#e2e8f0', font: { size: 12, weight: '600' } }, 
+         ticks: { display: false, max: 100, min: 0, stepSize: 20 } 
+      };
+      CHARTS['pn-radar'].options.scales.x = {display: false};
+      CHARTS['pn-radar'].options.scales.y = {display: false};
+      CHARTS['pn-radar'].update();
+    }
+  }
+
+  // Render Heatmap
+  let hmHtml = '<table><thead><tr><th>Workload / Algoritmo</th>';
+  fps.forEach(fp=> hmHtml += `<th>${groups[fp].label}</th>`);
+  hmHtml += '</tr></thead><tbody>';
+  
+  allAlgos.forEach(item => {
+     const rowVals = fps.map(fp => getBestSp(fp, item.s, item.a));
+     const rowMax = Math.max(...rowVals, 0.001);
+     
+     hmHtml += `<tr><td><b>${item.lbl}</b></td>`;
+     fps.forEach((fp, i) => {
+       const v = rowVals[i];
+       const ratio = v / rowMax;
+       const cellClass = v > 0 ? (ratio === 1 ? 'ok' : ratio > 0.5 ? 'wa' : 'ba') : '';
+       const text = v > 0 ? v.toFixed(2) + 'x' : '-';
+       const outline = ratio === 1 && v > 0 ? `outline: 1px solid var(--acc); outline-offset: -2px;` : '';
+       
+       hmHtml += `<td class="${cellClass}" style="${outline}">${text}</td>`;
+     });
+     hmHtml += `</tr>`;
+  });
+  hmHtml += '</tbody></table>';
+  const ael = document.getElementById('pan-assoc');
+  if(ael) ael.innerHTML = hmHtml;
+}
+
+/* ══════════════════════════════════════════════
+   COMPARAR HARDWARE
+══════════════════════════════════════════════ */
+function hwFingerprint(d){
+  const h=d.hardware||{};
+  return`${h.cpu_nome||'?'}|${h.gpu_nome||'?'}|${h.cpu_nucleos||'?'}`;
+}
+function hwLabel(d){
+  const h=d.hardware||{};
+  return`${h.cpu_nome||'CPU'} / ${h.gpu_nome||'GPU'} (${h.cpu_nucleos||'?'}c)`;
+}
+
+function renderHardware(){
+  const cont=document.getElementById('hw-content');
+  if(!LOADED_RUNS.length){cont.innerHTML='<div class="empty">Carregue runs de m\u00e1quinas diferentes para comparar.</div>';return;}
+
+  // agrupa por fingerprint
+  const groups={};
+  LOADED_RUNS.forEach(r=>{
+    const fp=hwFingerprint(r.data);
+    if(!groups[fp])groups[fp]={label:hwLabel(r.data),hw:r.data.hardware||{},runs:[]};
+    groups[fp].runs.push(r);
+  });
+  const fps=Object.keys(groups);
+  if(fps.length<2){cont.innerHTML='<div class="empty">Todos os runs pertencem ao mesmo hardware (<b>'+hwLabel(LOADED_RUNS[0].data)+'</b>). Carregue runs de uma segunda m\u00e1quina (arquivos de outro computador) para habilitar esta compara&ccedil;&atilde;o.</div>';return;}
+
+  fps.forEach((fp,i)=>groups[fp].col=PALETTE[i%PALETTE.length]);
+
+  const hasBusca=LOADED_RUNS.some(r=>r.sim==='busca');
+  const hasMat=LOADED_RUNS.some(r=>r.sim==='matematica');
+
+  // União de volumes (para gráficos de linha - cada hardware plota o que tem)
+  function commonVols(sim){
+    const vols=new Set();
+    fps.forEach(fp=>{
+      groups[fp].runs.filter(r=>r.sim===sim).forEach(r=>(r.data.resultados||[]).forEach(x=>vols.add(x.volume)));
+    });
+    return [...vols].sort((a,b)=>a-b);
+  }
+
+  // Interseção de volumes (apenas volumes presentes em TODOS os hardwares)
+  function intersectVols(sim){
+    const perHw = fps.map(fp=>{
+      const s=new Set();
+      groups[fp].runs.filter(r=>r.sim===sim).forEach(r=>(r.data.resultados||[]).forEach(x=>s.add(x.volume)));
+      return s;
+    }).filter(s=>s.size>0);
+    if(!perHw.length) return [];
+    return [...perHw[0]].filter(v=>perHw.every(s=>s.has(v))).sort((a,b)=>a-b);
+  }
+
+  function bestRun(fp,sim){
+    const runs=groups[fp].runs.filter(r=>r.sim===sim);
+    return runs.length?runs[runs.length-1]:null;
+  }
+
+  // Melhor thread count disponível para um volume específico
+  function maxThOf(fp,sim,vol){
+    const r=bestRun(fp,sim);if(!r)return 1;
+    const tl=uniq((r.data.resultados||[]).filter(x=>x.modo==='openmp'&&(vol==null||x.volume===vol)).map(x=>x.threads)).sort((a,b)=>a-b);
+    return tl.length?Math.max(...tl):1;
+  }
+
+  const cvBusca=commonVols('busca');
+  const ivBusca=intersectVols('busca');
+  const bv=ivBusca.length?Math.max(...ivBusca):null;
+
+  const cvMat=commonVols('matematica');
+  const ivMat=intersectVols('matematica');
+  const bvM=ivMat.length?Math.max(...ivMat):null;
+
+  let step=1;
+
+  // Banner de comparação: mostra exatamente o que está sendo comparado
+  const cmpBanner = fps.map((fp,i)=>{
+    const g=groups[fp]; const h=g.hw;
+    return `<div style="display:flex;align-items:center;gap:.75rem;padding:.75rem 1rem;background:${g.col}15;border:1px solid ${g.col}44;border-radius:.5rem;flex:1;min-width:200px">
+      <div style="width:.75rem;height:100%;min-height:3rem;background:${g.col};border-radius:2px;flex-shrink:0"></div>
+      <div>
+        <div style="font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;color:${g.col};font-weight:700;margin-bottom:.2rem">Máquina ${i+1}</div>
+        <div style="font-size:.95rem;font-weight:800;color:var(--tx)">${h.cpu_nome||'CPU ?'}</div>
+        <div style="font-size:.78rem;color:var(--mt);margin-top:.15rem">${h.cpu_nucleos||'?'}c / ${h.cpu_threads||'?'}t &nbsp;|&nbsp; GPU: ${h.gpu_nome||'?'} (${h.gpu_cuda_cores||'?'} CUDA)</div>
+        <div style="font-size:.72rem;color:var(--mt)">RAM: ${h.ram_gb||'?'} GB</div>
+      </div>
+    </div>`;
+  }).join(`<div style="display:flex;align-items:center;color:var(--mt);font-size:1.4rem;font-weight:300;padding:0 .5rem">vs</div>`);
+
+  cont.innerHTML=`
+  <!-- Banner de Comparação -->
+  <div class="sec">
+    <div class="sh"><div class="sn">1</div><div class="st">O que est&aacute; sendo comparado</div></div>
+    <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:stretch">${cmpBanner}</div>
+    <p class="exp" style="margin-top:.75rem">Volume de intersec&ccedil;&atilde;o usado nas compara&ccedil;&otilde;es diretas:
+      ${bv?`<b>Busca: ${fv(bv)}</b> (maior volume que <b>ambas</b> as m&aacute;quinas testaram)`:'—'}
+      ${bv&&bvM?' &nbsp;|&nbsp; ':''} 
+      ${bvM?`<b>Matem&aacute;tica: ${fv(bvM)}</b>`:''}
+    </p>
+  </div>
+
+  ${hasBusca&&cvBusca.length?`
+  <!-- BUSCA: Speedup por algoritmo (barra) -->
+  <div class="sec">
+    <div class="sh"><div class="sn">${step++}</div><div class="st">Busca — Speedup OpenMP: Quem acelera mais em cada algoritmo?</div></div>
+    <p class="exp">Cada barra mostra quantas vezes a m&aacute;quina foi mais r&aacute;pida que ela mesma em modo serial, usando todos os n&uacute;cleos OpenMP, no volume <b>${bv?fv(bv):'N/A'}</b> (intersecc&atilde;o). Speedup &gt;1 = ganho real com paralelismo.</p>
+    <div class="cb"><div class="cbt">Speedup OpenMP por algoritmo &mdash; ${fps.map(fp=>`<span style="color:${groups[fp].col}">${groups[fp].hw.cpu_nome||groups[fp].label}</span>`).join(' vs ')}</div><canvas id="hw-c0"></canvas></div>
+  </div>
+
+  <!-- BUSCA: Curvas de speedup x volume (Gustafson) -->
+  <div class="sec">
+    <div class="sh"><div class="sn">${step++}</div><div class="st">Busca — Escalabilidade com volume (Lei de Gustafson)</div></div>
+    <p class="exp">Como o speedup OpenMP evolui conforme o volume de dados cresce. Se a curva sobe com o volume, a m&aacute;quina escala bem (lei de Gustafson). Curva plana ou caindo = gargalo de mem&oacute;ria/overhead de threads. Cada linha colorida = uma m&aacute;quina.</p>
+    <div class="g2">
+      <div class="cb"><div class="cbt">Busca Linear &mdash; speedup OpenMP &times; volume &nbsp; <span style="font-size:.7rem;opacity:.7">${fps.map(fp=>`<span style="color:${groups[fp].col}">${groups[fp].hw.cpu_nome||groups[fp].label}</span>`).join(', ')}</span></div><canvas id="hw-c1"></canvas></div>
+      <div class="cb"><div class="cbt">Reduce Paralelo &mdash; speedup OpenMP &times; volume &nbsp; <span style="font-size:.7rem;opacity:.7">${fps.map(fp=>`<span style="color:${groups[fp].col}">${groups[fp].hw.cpu_nome||groups[fp].label}</span>`).join(', ')}</span></div><canvas id="hw-c2"></canvas></div>
+    </div>
+  </div>
+
+  <!-- BUSCA: Tempo serial (throughput bruto da CPU) -->
+  <div class="sec">
+    <div class="sh"><div class="sn">${step++}</div><div class="st">Busca — Velocidade bruta da CPU (tempo serial, sem paralelismo)</div></div>
+    <p class="exp">Tempo de execu&ccedil;&atilde;o com apenas 1 n&uacute;cleo (sem OpenMP, sem GPU). Quanto <b>menor</b>, mais r&aacute;pido o processador em velocidade pura de c&oacute;digo sequencial (IPC, cache, clock). Este gr&aacute;fico mostra a vantagem/desvantagem de cada CPU no pior caso de paralelismo.</p>
+    <div class="cb"><div class="cbt">Tempo serial Busca Linear &times; volume (escala logar&iacute;tmica) &mdash; ${fps.map(fp=>`<span style="color:${groups[fp].col}">${groups[fp].hw.cpu_nome||groups[fp].label}</span>`).join(' vs ')}</div><canvas id="hw-c3"></canvas></div>
+  </div>
+
+  <!-- BUSCA: GPU table -->
+  <div class="sec">
+    <div class="sh"><div class="sn">${step++}</div><div class="st">Busca — Desempenho GPU Real vs CPU Serial &mdash; ${bv?fv(bv):'N/A'}</div></div>
+    <p class="exp">Compara diretamente o tempo CPU serial (1 n&uacute;cleo) com o speedup OpenMP e o speedup GPU Real, no volume <b>${bv?fv(bv):'N/A'}</b>. Speedup GPU &lt;1 = GPU foi <em>mais lenta</em> que 1 n&uacute;cleo de CPU (custo de transfer&ecirc;ncia de dados superou o ganho).</p>
+    <div class="cb" id="hw-c4-tbl"></div>
+  </div>`:``}
+
+  ${hasMat&&cvMat.length?`
+  <!-- MAT: Speedup por algoritmo (barra) -->
+  <div class="sec">
+    <div class="sh"><div class="sn">${step++}</div><div class="st">Matem&aacute;tica Densa — Speedup OpenMP: Quem acelera mais?</div></div>
+    <p class="exp">Igual ao gr&aacute;fico de busca, mas para Monte Carlo e Mandelbrot no volume <b>${bvM?fv(bvM):'N/A'}</b>. Estes algoritmos t&ecirc;m maior fra&ccedil;&atilde;o paralela (fp &gt; 0.9), por isso o speedup tende a ser bem maior.</p>
+    <div class="cb"><div class="cbt">Speedup OpenMP por algoritmo &mdash; ${fps.map(fp=>`<span style="color:${groups[fp].col}">${groups[fp].hw.cpu_nome||groups[fp].label}</span>`).join(' vs ')}</div><canvas id="hw-m0"></canvas></div>
+  </div>
+
+  <!-- MAT: Curvas x volume -->
+  <div class="sec">
+    <div class="sh"><div class="sn">${step++}</div><div class="st">Matem&aacute;tica Densa — Escalabilidade com volume (Gustafson)</div></div>
+    <p class="exp">Para algoritmos com alta fra&ccedil;&atilde;o paralela como Monte Carlo e Mandelbrot, a Lei de Gustafson prev&ecirc; que o speedup cresce com o tamanho do problema. Observe se as curvas sobem conforme o volume aumenta.</p>
+    <div class="g2">
+      <div class="cb"><div class="cbt">Monte Carlo &pi; &mdash; speedup OpenMP &times; volume &nbsp; <span style="font-size:.7rem;opacity:.7">${fps.map(fp=>`<span style="color:${groups[fp].col}">${groups[fp].hw.cpu_nome||groups[fp].label}</span>`).join(', ')}</span></div><canvas id="hw-m1"></canvas></div>
+      <div class="cb"><div class="cbt">Mandelbrot 2D &mdash; speedup OpenMP &times; volume &nbsp; <span style="font-size:.7rem;opacity:.7">${fps.map(fp=>`<span style="color:${groups[fp].col}">${groups[fp].hw.cpu_nome||groups[fp].label}</span>`).join(', ')}</span></div><canvas id="hw-m2"></canvas></div>
+    </div>
+  </div>
+
+  <!-- MAT: GPU table -->
+  <div class="sec">
+    <div class="sh"><div class="sn">${step++}</div><div class="st">Matem&aacute;tica Densa — Desempenho GPU Real &mdash; ${bvM?fv(bvM):'N/A'}</div></div>
+    <p class="exp">Aqui o ganho da GPU tende a ser dramaticamente alto para Monte Carlo e Mandelbrot. A GPU processa milhares de pontos/pixels em paralelo massivo.</p>
+    <div class="cb" id="hw-m-tbl"></div>
+  </div>`:``}
+
+  <!-- LEADERBOARD — seção principal -->
+  <div class="sec" style="border:1px solid var(--acc);border-radius:.5rem;padding:1rem;background:linear-gradient(135deg,var(--sf) 0%,#1e3a5f33 100%)">
+    <div class="sh"><div class="sn" style="background:var(--acc)">${step++}</div><div class="st" style="color:var(--acc)">&#x1F3C6; Leaderboard Anal&iacute;tico — Quem vence cada benchmark?</div></div>
+    <p class="exp">Para cada cen&aacute;rio (algoritmo + modo de execu&ccedil;&atilde;o), a barra mostra o desempenho relativo de cada m&aacute;quina. <b>Barras cheias</b> = l&iacute;der do cen&aacute;rio. <span style="color:#10b981">Verde (tempo serial)</span> = CPU mais r&aacute;pida em modo sequencial. <span style="color:#3b82f6">Azul (speedup)</span> = maior acelera&ccedil;&atilde;o paralela.
+    <br><small style="opacity:.7">Volume de refer&ecirc;ncia: Busca=${bv?fv(bv):'—'} &nbsp;|&nbsp; Matem&aacute;tica=${bvM?fv(bvM):'—'}</small></p>
+    <div style="overflow-x:auto" id="hw-rank"></div>
+  </div>`;
+
+
+  const LS={pointRadius:5,tension:.3,fill:false};
+
+  if(hasBusca&&cvBusca.length){
+    // Bar chart for Max Volume OpenMP Comparison
+    if(bv){
+      const algoLbls = ALGO_BUSCA.map(a=>ALGO_LABEL[a]);
+      const dsBar = fps.map(fp => {
+         const mt = maxThOf(fp,'busca',bv);
+         const r = bestRun(fp,'busca');
+         return {
+           label: groups[fp].label,
+           data: ALGO_BUSCA.map(a=>{const x=r?find(r.data,a,bv,'openmp',mt):null;return x?x.speedup:null;}),
+           backgroundColor: groups[fp].col,
+           borderColor: groups[fp].col,
+           borderWidth: 1
+         };
+      });
+      mkChart('hw-c0','bar',algoLbls,dsBar,{xTitle:'Algoritmo',yTitle:'Speedup OpenMP'});
+    }
+
+    ['linear','reduce'].forEach((algo,ci)=>{
+      mkChart(['hw-c1','hw-c2'][ci],'line',cvBusca.map(fv),fps.map(fp=>{
+        const r=bestRun(fp,'busca');const mt=maxThOf(fp,'busca',null);
+        return{label:groups[fp].label,data:cvBusca.map(v=>{const x=r?find(r.data,algo,v,'openmp',mt):null;return x?x.speedup:null;}),borderColor:groups[fp].col,backgroundColor:groups[fp].col+'33',...LS};
+      }),{xTitle:'Volume',yTitle:'Speedup'});
+    });
+    mkChart('hw-c3','line',cvBusca.map(fv),fps.map(fp=>{
+      const r=bestRun(fp,'busca');
+      return{label:groups[fp].label,data:cvBusca.map(v=>{const x=r?find(r.data,'linear',v,'serial',1):null;return x?x.tempo_s:null;}),borderColor:groups[fp].col,backgroundColor:groups[fp].col+'33',...LS};
+    }),{ylog:true,xTitle:'Volume',yTitle:'Tempo (s)'});
+
+    if(bv){
+      let h='<table><thead><tr><th>Hardware</th><th>Nucl.</th><th>CUDA cores</th>';
+      ['linear','binaria','hash','reduce'].forEach(a=>h+=`<th>${ALGO_LABEL[a]} serial @${fv(bv)}</th><th>OpenMP speedup</th>${fps.some(fp=>{const r=bestRun(fp,'busca');return r&&(r.data.resultados||[]).some(x=>x.modo==='cuda');})?`<th>GPU Real speedup</th>`:''}`)
+      h+='</tr></thead><tbody>';
+      const hasCuBusca=fps.some(fp=>{const r=bestRun(fp,'busca');return r&&(r.data.resultados||[]).some(x=>x.modo==='cuda');});
+      fps.forEach(fp=>{
+        const g=groups[fp];const r=bestRun(fp,'busca');const mt=maxThOf(fp,'busca',bv);const gc2=g.hw.gpu_cuda_cores||896;
+        h+=`<tr><td><span style="display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:${g.col};margin-right:.4rem"></span><b>${g.label}</b></td><td>${g.hw.cpu_nucleos||'?'}</td><td>${g.hw.gpu_cuda_cores||'?'}</td>`;
+        ['linear','binaria','hash','reduce'].forEach(a=>{
+          const rs=r?find(r.data,a,bv,'serial',1):null;const ro=r?find(r.data,a,bv,'openmp',mt):null;const rc=hasCuBusca?(r?find(r.data,a,bv,'cuda',gc2):null):null;
+          const spo=ro?ro.speedup:null;const spc=rc?rc.speedup:null;
+          const clo=spo==null?'':spo>=2?'ok':spo>=1?'wa':'ba';
+          const clc=spc==null?'':spc>=2?'ok':spc>=1?'wa':'ba';
+          h+=`<td>${rs?(rs.tempo_s*1000).toFixed(2)+'ms':'-'}</td><td class="${clo}">${spo!=null?spo.toFixed(2)+'x':'-'}</td>`;
+          if(hasCuBusca)h+=`<td class="${clc}">${spc!=null?spc.toFixed(2)+'x':'-'}</td>`;
+        });
+        h+='</tr>';
+      });
+      document.getElementById('hw-c4-tbl').innerHTML=h+'</tbody></table>';
+    }
+  }
+
+  if(hasMat&&cvMat.length){
+    if(bvM){
+      const algoLbls = ALGO_MAT.map(a=>ALGO_MAT_LABEL[a]);
+      const dsBar = fps.map(fp => {
+         const mt = maxThOf(fp,'matematica',bvM);
+         const r = bestRun(fp,'matematica');
+         return {
+           label: groups[fp].label,
+           data: ALGO_MAT.map(a=>{const x=r?find(r.data,a,bvM,'openmp',mt):null;return x?x.speedup:null;}),
+           backgroundColor: groups[fp].col,
+           borderColor: groups[fp].col,
+           borderWidth: 1
+         };
+      });
+      mkChart('hw-m0','bar',algoLbls,dsBar,{xTitle:'Algoritmo',yTitle:'Speedup OpenMP'});
+    }
+
+    ALGO_MAT.forEach((algo,i)=>{
+      mkChart(['hw-m1','hw-m2'][i],'line',cvMat.map(fv),fps.map(fp=>{
+        const r=bestRun(fp,'matematica');const mt=maxThOf(fp,'matematica',null);
+        return{label:groups[fp].label,data:cvMat.map(v=>{const x=r?find(r.data,algo,v,'openmp',mt):null;return x?x.speedup:null;}),borderColor:groups[fp].col,backgroundColor:groups[fp].col+'33',...LS};
+      }),{xTitle:'Volume',yTitle:'Speedup'});
+    });
+    if(bvM){
+      const hasCuMat=fps.some(fp=>{const r=bestRun(fp,'matematica');return r&&(r.data.resultados||[]).some(x=>x.modo==='cuda');});
+      let h='<table><thead><tr><th>Hardware</th>';
+      ALGO_MAT.forEach(a=>{h+=`<th>${ALGO_MAT_LABEL[a]} serial @${fv(bvM)}</th><th>OpenMP speedup</th>`;if(hasCuMat)h+=`<th>GPU Real speedup</th>`;});
+      h+='</tr></thead><tbody>';
+      fps.forEach(fp=>{
+        const g=groups[fp];const r=bestRun(fp,'matematica');const mt=maxThOf(fp,'matematica',bvM);const gc2=g.hw.gpu_cuda_cores||896;
+        h+=`<tr><td><span style="display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:${g.col};margin-right:.4rem"></span><b>${g.label}</b></td>`;
+        ALGO_MAT.forEach(a=>{
+          const rs=r?find(r.data,a,bvM,'serial',1):null;const ro=r?find(r.data,a,bvM,'openmp',mt):null;const rc=hasCuMat?(r?find(r.data,a,bvM,'cuda',gc2):null):null;
+          const spo=ro?ro.speedup:null;const spc=rc?rc.speedup:null;
+          h+=`<td>${rs?(rs.tempo_s).toFixed(3)+'s':'-'}</td><td class="${spo==null?'':spo>=2?'ok':spo>=1?'wa':'ba'}">${spo!=null?spo.toFixed(2)+'x':'-'}</td>`;
+          if(hasCuMat)h+=`<td class="${spc==null?'':spc>=2?'ok':spc>=1?'wa':'ba'}">${spc!=null?spc.toFixed(2)+'x':'-'}</td>`;
+        });
+        h+='</tr>';
+      });
+      document.getElementById('hw-m-tbl').innerHTML=h+'</tbody></table>';
+    }
+  }
+
+  // Ranking geral
+  const rankScenarios=[];
+  
+  function addRank(name, isTime, getValFunc){
+    const vals = fps.map(fp=>({fp, val:getValFunc(fp)})).filter(x=>x.val!=null && x.val>0);
+    if(vals.length > 0){
+      vals.sort((a,b)=>isTime ? a.val-b.val : b.val-a.val);
+      rankScenarios.push({name, vals});
+    }
+  }
+
+  if(hasBusca&&bv){
+    ALGO_BUSCA.forEach(a=>{
+      addRank(`${ALGO_LABEL[a]} Serial CPU @ ${fv(bv)}`, true, fp=>{const r=bestRun(fp,'busca');return r?find(r.data,a,bv,'serial',1)?.tempo_s:null;});
+      addRank(`${ALGO_LABEL[a]} OpenMP @ ${fv(bv)}`, false, fp=>{const r=bestRun(fp,'busca');return r?find(r.data,a,bv,'openmp',maxThOf(fp,'busca',bv))?.speedup:null;});
+      const hasCu = fps.some(fp=>{const r=bestRun(fp,'busca');return r&&(r.data.resultados||[]).some(x=>x.modo==='cuda');});
+      if(hasCu){
+        addRank(`${ALGO_LABEL[a]} GPU Real @ ${fv(bv)}`, false, fp=>{const r=bestRun(fp,'busca');return r?find(r.data,a,bv,'cuda',groups[fp].hw.gpu_cuda_cores||896)?.speedup:null;});
+      }
+    });
+  }
+  if(hasMat&&bvM){
+    ALGO_MAT.forEach(a=>{
+      addRank(`${ALGO_MAT_LABEL[a]} Serial CPU @ ${fv(bvM)}`, true, fp=>{const r=bestRun(fp,'matematica');return r?find(r.data,a,bvM,'serial',1)?.tempo_s:null;});
+      addRank(`${ALGO_MAT_LABEL[a]} OpenMP @ ${fv(bvM)}`, false, fp=>{const r=bestRun(fp,'matematica');return r?find(r.data,a,bvM,'openmp',maxThOf(fp,'matematica',bvM))?.speedup:null;});
+      const hasCu = fps.some(fp=>{const r=bestRun(fp,'matematica');return r&&(r.data.resultados||[]).some(x=>x.modo==='cuda');});
+      if(hasCu){
+        addRank(`${ALGO_MAT_LABEL[a]} GPU Real @ ${fv(bvM)}`, false, fp=>{const r=bestRun(fp,'matematica');return r?find(r.data,a,bvM,'cuda',groups[fp].hw.gpu_cuda_cores||896)?.speedup:null;});
+      }
+    });
+  }
+  let rh='<table><thead><tr><th style="min-width:220px;color:var(--mt)">M&eacute;trica / Workload</th>';fps.forEach(fp=>rh+=`<th style="color:${groups[fp].col};width:${100/fps.length}%">${groups[fp].label}</th>`);rh+='</tr></thead><tbody>';
+  rankScenarios.forEach(sc=>{
+    rh+=`<tr><td><b>${sc.name}</b></td>`;
+    
+    // Min/max para normalizar inline bars
+    const vals = sc.vals.map(x=>x.val);
+    const maxVal = Math.max(...vals, 0.001);
+    const isTime = sc.name.includes('Serial');
+
+    fps.forEach(fp=>{
+      const w=sc.vals.find(x=>x.fp===fp);
+      if(!w){ rh+=`<td><span style="color:var(--bd)">N/A</span></td>`; return; }
+      
+      const rank=sc.vals.findIndex(x=>x.fp===fp)+1;
+      const text = isTime ? (w.val<1?(w.val*1000).toFixed(2)+'ms':w.val.toFixed(3)+'s') : w.val.toFixed(2)+'x';
+      
+      // Inline bar lógica: 
+      // Speedup: Maior = barra cheia. Tempo: barra cheia mas no maxVal
+      // Para tempo, se o menor ganha, a barra visual pode ser o ratio inverso ou apenas preenchida conforme o valor
+      // Vamos preencher proporcionalmente: maxVal = 100% da barra. 
+      const pct = (w.val / maxVal) * 100;
+      
+      // Cores colorblind-friendly para o Rank 1.
+      // Tempo (serial): Menor ganha -> Verde (#10b981) se rank 1, senao cinza
+      // Speedup: Maior ganha -> Azul (#3b82f6) se rank 1, senao cinza
+      const isWinner = rank===1 && sc.vals.length>1;
+      const barColor = isTime ? (isWinner ? '#10b981' : 'var(--mt)') : (isWinner ? '#3b82f6' : 'var(--mt)');
+      
+      rh+=`<td>
+        <div class="inline-bar-wrap" title="Rank ${rank}">
+          <div class="inline-bar-fill" style="width:${pct}%; background:${barColor}"></div>
+          <div class="inline-bar-text">${text} ${isWinner?'👑':''}</div>
+        </div>
+      </td>`;
+    });
+    rh+='</tr>';
+  });
+  document.getElementById('hw-rank').innerHTML=rh+'</tbody></table>';
+}
+
+/* ── COMPARAR ── */
+function setCmpType(t){
+  g_cmp_type=t;
+  document.getElementById('cmp-type-busca').classList.toggle('active',t==='busca');
+  document.getElementById('cmp-type-mat').classList.toggle('active',t==='matematica');
+  refreshCmpChecks();
+}
+function getCheckedRuns(){return[...document.querySelectorAll('#cmp-checks input[type=checkbox]:checked')].map(el=>LOADED_RUNS[parseInt(el.dataset.idx)]).filter(r=>r&&r.sim===g_cmp_type);}
+
+function renderCmp(){
+  const runs=getCheckedRuns();
+  const cont=document.getElementById('cmp-content');
+  if(!runs.length){cont.innerHTML='<div class="empty">Selecione ao menos um run acima para gerar a compara\u00e7\u00e3o.</div>';return;}
+  if(g_cmp_type==='busca')renderCmpBusca(runs,cont);else renderCmpMat(runs,cont);
+}
+
+function renderCmpBusca(runs,cont){
+  const allVS=uniq(runs.flatMap(r=>(r.data.resultados||[]).map(x=>x.volume))).sort((a,b)=>a-b);
+  const allTL=uniq(runs.flatMap(r=>(r.data.resultados||[]).filter(x=>x.modo==='openmp').map(x=>x.threads))).sort((a,b)=>a-b);
+  const maxTh=allTL.length?Math.max(...allTL):8;const bv=Math.max(...allVS);const LS={pointRadius:5,tension:.3,fill:false};
+
+  cont.innerHTML=`
+  <div class="sec"><div class="sh"><div class="sn">3</div><div class="st">Speedup ${maxTh}t &times; volume</div></div>
+    <div class="g2"><div class="cb"><div class="cbt">Busca Linear</div><canvas id="cc1"></canvas></div><div class="cb"><div class="cbt">Reduce Paralelo</div><canvas id="cc2"></canvas></div></div></div>
+  <div class="sec"><div class="sh"><div class="sn">4</div><div class="st">Tempo serial &times; volume (escala log)</div></div>
+    <div class="cb"><div class="cbt">Busca Linear — tempo serial</div><canvas id="cc3"></canvas></div></div>
+  <div class="sec"><div class="sh"><div class="sn">5</div><div class="st">Curva speedup &times; threads — maior volume (${fv(bv)})</div></div>
+    <div class="cb"><div class="cbt">Speedup busca linear &times; threads</div><canvas id="cc4"></canvas></div></div>
+  <div class="sec"><div class="sh"><div class="sn">6</div><div class="st">Tabela comparativa</div></div>
+    <div class="cb" id="cc-tbl"></div></div>`;
+
+  mkChart('cc1','line',allVS.map(fv),runs.map(r=>({label:r.label,data:allVS.map(v=>{const x=find(r.data,'linear',v,'openmp',maxTh);return x?x.speedup:null;}),borderColor:r.col,backgroundColor:r.col+'33',...LS})),{xTitle:'Volume',yTitle:'Speedup'});
+  mkChart('cc2','line',allVS.map(fv),runs.map(r=>({label:r.label,data:allVS.map(v=>{const x=find(r.data,'reduce',v,'openmp',maxTh);return x?x.speedup:null;}),borderColor:r.col,backgroundColor:r.col+'33',...LS})),{xTitle:'Volume',yTitle:'Speedup'});
+  mkChart('cc3','line',allVS.map(fv),runs.map(r=>({label:r.label,data:allVS.map(v=>{const x=find(r.data,'linear',v,'serial',1);return x?x.tempo_s:null;}),borderColor:r.col,backgroundColor:r.col+'33',...LS})),{ylog:true,xTitle:'Volume',yTitle:'Tempo (s)'});
+
+  const XMOD2=[{m:'serial',t:1},...allTL.map(t=>({m:'openmp',t}))];
+  const hasGS=runs.some(r=>(r.data.resultados||[]).some(x=>x.modo==='gpu_sim'));
+  const hasCu=runs.some(r=>(r.data.resultados||[]).some(x=>x.modo==='cuda'));
+  if(hasGS){const gc=runs[0].data.hardware?.gpu_cuda_cores||896;XMOD2.push({m:'gpu_sim',t:gc});}
+  if(hasCu){const gc=runs[0].data.hardware?.gpu_cuda_cores||896;XMOD2.push({m:'cuda',t:gc});}
+  const XLBL2=XMOD2.map(x=>x.m==='serial'?'Serial':x.m==='gpu_sim'?'GPU Sim':x.m==='cuda'?'GPU Real':x.t+'t');
+  const avgFs=(()=>{const fss=runs.map(r=>{const rx=find(r.data,'linear',bv,'openmp',maxTh);if(!rx||rx.speedup<=1)return 0.5;const v=(maxTh/rx.speedup-1)/(maxTh-1);return Math.max(0.001,Math.min(0.999,v));});return fss.reduce((a,b)=>a+b,0)/fss.length;})();
+  const amdDs=runs.map(r=>({label:r.label,data:XMOD2.map(x=>{const rx=find(r.data,'linear',bv,x.m,x.t);return rx?rx.speedup:null;}),borderColor:r.col,backgroundColor:r.col+'33',...LS}));
+  amdDs.push({label:'Teto Amdahl (m\u00e9dia)',data:XMOD2.map(x=>amdahlCap(x.t,avgFs)),borderColor:'#94a3b8',borderDash:[7,4],borderWidth:1.5,pointRadius:0,fill:false});
+  mkChart('cc4','line',XLBL2,amdDs,{xTitle:'Modo',yTitle:'Speedup'});
+
+  let h='<table><thead><tr><th>Run</th><th>Build</th><th>CPU</th>';['linear','reduce','hash'].forEach(a=>h+=`<th>${ALGO_LABEL[a]} ${maxTh}t / ${fv(bv)}</th>`);h+=`<th>T serial @ ${fv(bv)}</th></tr></thead><tbody>`;
+  runs.forEach(r=>{h+=`<tr><td><span style="display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:${r.col};margin-right:.4rem"></span><b>${r.label}</b></td><td>${r.data.build||'?'}</td><td>${r.data.hardware?.cpu_nome||'?'}</td>`;['linear','reduce','hash'].forEach(a=>{const rows=(r.data.resultados||[]).filter(x=>x.algoritmo===a&&x.volume===bv&&x.modo==='openmp');const mx=rows.length?Math.max(...rows.map(x=>x.speedup)):null;const cl=mx==null?'':mx>=2?'ok':mx>=1?'wa':'ba';h+=`<td class="${cl}">${mx!=null?mx.toFixed(2)+'x':'-'}</td>`;});const rt=find(r.data,'linear',bv,'serial',1);h+=`<td>${rt?(rt.tempo_s*1000).toFixed(2)+'ms':'-'}</td></tr>`;});
+  document.getElementById('cc-tbl').innerHTML=h+'</tbody></table>';
+}
+
+function renderCmpMat(runs,cont){
+  const allVS=uniq(runs.flatMap(r=>(r.data.resultados||[]).map(x=>x.volume))).sort((a,b)=>a-b);
+  const allTL=uniq(runs.flatMap(r=>(r.data.resultados||[]).filter(x=>x.modo==='openmp').map(x=>x.threads))).sort((a,b)=>a-b);
+  const maxTh=allTL.length?Math.max(...allTL):8;const bv=Math.max(...allVS);const LS={pointRadius:5,tension:.3,fill:false};
+
+  cont.innerHTML=`
+  <div class="sec"><div class="sh"><div class="sn">3</div><div class="st">Speedup ${maxTh}t &times; volume</div></div>
+    <div class="g2"><div class="cb"><div class="cbt">Monte Carlo &pi;</div><canvas id="cm1"></canvas></div><div class="cb"><div class="cbt">Mandelbrot 2D</div><canvas id="cm2"></canvas></div></div></div>
+  <div class="sec"><div class="sh"><div class="sn">4</div><div class="st">Tempo serial &times; volume (escala log)</div></div>
+    <div class="cb"><div class="cbt">Monte Carlo — tempo serial</div><canvas id="cm3"></canvas></div></div>
+  <div class="sec"><div class="sh"><div class="sn">5</div><div class="st">Curva speedup &times; threads — maior volume (${fv(bv)})</div></div>
+    <div class="g2"><div class="cb"><div class="cbt">Monte Carlo &times; threads</div><canvas id="cm4a"></canvas></div><div class="cb"><div class="cbt">Mandelbrot &times; threads</div><canvas id="cm4b"></canvas></div></div></div>
+  <div class="sec"><div class="sh"><div class="sn">6</div><div class="st">Tabela comparativa</div></div>
+    <div class="cb" id="cm-tbl"></div></div>`;
+
+  ALGO_MAT.forEach((algo,i)=>mkChart(['cm1','cm2'][i],'line',allVS.map(fv),runs.map(r=>({label:r.label,data:allVS.map(v=>{const x=find(r.data,algo,v,'openmp',maxTh);return x?x.speedup:null;}),borderColor:r.col,backgroundColor:r.col+'33',...LS})),{xTitle:'Volume',yTitle:'Speedup'}));
+  mkChart('cm3','line',allVS.map(fv),runs.map(r=>({label:r.label,data:allVS.map(v=>{const x=find(r.data,'montecarlo',v,'serial',1);return x?x.tempo_s:null;}),borderColor:r.col,backgroundColor:r.col+'33',...LS})),{ylog:true,xTitle:'Volume',yTitle:'Tempo (s)'});
+  ALGO_MAT.forEach((algo,i)=>{
+    const hasCu=runs.some(r=>(r.data.resultados||[]).some(x=>x.modo==='cuda'));
+    const XMOD2=[{m:'serial',t:1},...allTL.map(t=>({m:'openmp',t}))];if(hasCu){const gc=runs[0].data.hardware?.gpu_cuda_cores||896;XMOD2.push({m:'cuda',t:gc});}
+    const XLBL2=XMOD2.map(x=>x.m==='serial'?'Serial':x.m==='cuda'?'GPU Real':x.t+'t');
+    mkChart(['cm4a','cm4b'][i],'line',XLBL2,runs.map(r=>({label:r.label,data:XMOD2.map(x=>{const rx=find(r.data,algo,bv,x.m,x.t);return rx?rx.speedup:null;}),borderColor:r.col,backgroundColor:r.col+'33',...LS})),{xTitle:'Modo',yTitle:'Speedup'});
+  });
+  let h='<table><thead><tr><th>Run</th><th>Build</th><th>CPU</th>';ALGO_MAT.forEach(a=>h+=`<th>${ALGO_MAT_LABEL[a]} ${maxTh}t / ${fv(bv)}</th>`);h+='</tr></thead><tbody>';
+  runs.forEach(r=>{h+=`<tr><td><span style="display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:${r.col};margin-right:.4rem"></span><b>${r.label}</b></td><td>${r.data.build||'?'}</td><td>${r.data.hardware?.cpu_nome||'?'}</td>`;ALGO_MAT.forEach(a=>{const rows=(r.data.resultados||[]).filter(x=>x.algoritmo===a&&x.volume===bv&&x.modo==='openmp');const mx=rows.length?Math.max(...rows.map(x=>x.speedup)):null;const cl=mx==null?'':mx>=2?'ok':mx>=1?'wa':'ba';h+=`<td class="${cl}">${mx!=null?mx.toFixed(2)+'x':'-'}</td>`;});h+='</tr>';});
+  document.getElementById('cm-tbl').innerHTML=h+'</tbody></table>';
+}
+</script>
+</body>
+</html>
