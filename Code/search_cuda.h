@@ -30,21 +30,6 @@ SearchResult busca_linear_cuda(Event *dados, int n, float vmin, float vmax,
                                double *t_total_s, double *t_kernel_s);
 
 /*
- * Reduce paralelo real na GTX 1650 — kernel com redução em shared memory.
- *
- * Cada bloco reduz sua fatia para um inteiro em SHMEM (on-chip),
- * depois um único atomicAdd por bloco acumula no resultado global.
- * Padrão ideal para GPU: sem array de saída grande, sem dependências.
- *
- *   t_total_s  — [saída] H2D + kernel  (pode ser NULL)
- *   t_kernel_s — [saída] kernel puro   (pode ser NULL)
- *
- * Retorna SearchResult com itens=NULL e count=número de matches.
- */
-SearchResult reduce_paralelo_cuda(Event *dados, int n, float vmin, float vmax,
-                                  double *t_total_s, double *t_kernel_s);
-
-/*
  * Busca binária na GPU (1 thread por chunk do array).
  * Exige que dados esteja ordenado.
  */

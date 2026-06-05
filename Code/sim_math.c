@@ -71,30 +71,6 @@ double montecarlo_openmp(long n, int threads) {
     return 4.0 * (double)inside / (double)n;
 }
 
-double montecarlo_gpu_sim(long n) {
-    /* Simula execucao em blocos de 256 threads (como um kernel CUDA) */
-    const int BLOCK = 256;
-    long blocks = (n + BLOCK - 1) / BLOCK;
-    long inside = 0;
-    for (long b = 0; b < blocks; b++) {
-        long blk_start = b * (long)BLOCK;
-        long blk_end   = blk_start + BLOCK;
-        if (blk_end > n) blk_end = n;
-        for (long t = blk_start; t < blk_end; t++) {
-            /* semente por bloco como no kernel CUDA */
-            uint64_t state = (uint64_t)((unsigned long)b * 1664525UL + 1013904223UL)
-                             ^ 0xDEADBEEFULL;
-            /* avanca o estado LCG para a thread local dentro do bloco */
-            long local_tid = t - blk_start;
-            for (long k = 0; k < local_tid * 2; k++) lcg_next(&state);
-            double x = lcg_double(&state);
-            double y = lcg_double(&state);
-            if (x * x + y * y <= 1.0) inside++;
-        }
-    }
-    return 4.0 * (double)inside / (double)n;
-}
-
 /* ═══════════════════════════════════════════════════════
    MANDELBROT 2D
    Grade: side x side pixels sobre o plano complexo [-2,1] x [-1.5,1.5]
@@ -156,35 +132,5 @@ double mandelbrot_openmp(int n, int threads) {
     (void)threads;
     return mandelbrot_serial(n);
 #endif
-    return (double)total;
-}
-
-double mandelbrot_gpu_sim(int n) {
-    /* Simula 1 thread por pixel em blocos de 256 (grid-stride) */
-    int side = (int)sqrt((double)n);
-    if (side < 1) side = 1;
-    int total_pixels = side * side;
-    const int BLOCK = 256;
-    long total = 0;
-    for (int blk = 0; blk * BLOCK < total_pixels; blk++) {
-        int blk_start = blk * BLOCK;
-        int blk_end   = blk_start + BLOCK;
-        if (blk_end > total_pixels) blk_end = total_pixels;
-        for (int idx = blk_start; idx < blk_end; idx++) {
-            int py = idx / side;
-            int px = idx % side;
-            float c_re = -2.0f + (float)px * (3.0f / (float)side);
-            float c_im = -1.5f + (float)py * (3.0f / (float)side);
-            float z_re = 0.0f, z_im = 0.0f;
-            int iter = 0;
-            while (z_re * z_re + z_im * z_im <= 4.0f && iter < MANDEL_MAX_ITER) {
-                float tmp = z_re * z_re - z_im * z_im + c_re;
-                z_im = 2.0f * z_re * z_im + c_im;
-                z_re = tmp;
-                iter++;
-            }
-            total += iter;
-        }
-    }
     return (double)total;
 }

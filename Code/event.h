@@ -43,9 +43,12 @@ typedef struct {
     char   modo[16];        /* "serial", "openmp", "cuda"         */
     int    volume;          /* número de registros                */
     int    threads;         /* 1, 2, 4, 8 (ou núcleos GPU)       */
-    double t_segundos;      /* tempo medido em segundos           */
+    double t_segundos;      /* tempo medido em segundos (total)   */
     double speedup;         /* Tserial / T_este                   */
     int    resultados;      /* quantos registros a busca retornou */
+    double t_kernel_s;      /* só CUDA: tempo do kernel puro.
+                               Transferência PCIe = t_segundos - t_kernel_s.
+                               0 nos modos serial/openmp.   */
 } BenchmarkResult;
 
 #endif /* EVENT_H */

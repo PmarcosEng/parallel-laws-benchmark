@@ -1,5 +1,7 @@
 CC      = gcc
-CFLAGS  = -std=c99 -Wall -Wextra -O2
+# -Wno-missing-field-initializers: BenchmarkResult tem campo opcional t_kernel_s
+# (só CUDA) que fica zero por init parcial intencional nos modos CPU.
+CFLAGS  = -std=c99 -Wall -Wextra -Wno-missing-field-initializers -O2
 LDFLAGS = -lm
 OPENMP  = -fopenmp
 SRC     = generator.c search.c sim_math.c benchmark.c

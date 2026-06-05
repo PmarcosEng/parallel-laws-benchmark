@@ -74,7 +74,7 @@ typedef struct {
     int  cpu_nucleos;        /* nucleos fisicos */
     int  cpu_threads;        /* threads logicas (com SMT/HT) */
     char gpu_nome[64];
-    int  gpu_cuda_cores;     /* usado como thread count na gpu_sim */
+    int  gpu_cuda_cores;     /* core count da GPU (threads dos modos cuda) */
     int  ram_gb;
     int  n_repeticoes;       /* repeticoes cronometradas por medicao (default 3) */
     char volumes_busca[128]; /* lista CSV de volumes de busca */
@@ -359,10 +359,18 @@ static void salvar_run_busca(const char *ts) {
         BenchmarkResult *r = &todos_resultados[i];
         fprintf(f,
             "    {\"algoritmo\":\"%s\",\"modo\":\"%s\",\"volume\":%d,"
-            "\"threads\":%d,\"tempo_s\":%.8f,\"speedup\":%.6f,\"count\":%d}%s\n",
+            "\"threads\":%d,\"tempo_s\":%.8f,\"speedup\":%.6f,\"count\":%d",
             r->algoritmo, r->modo, r->volume, r->threads,
-            r->t_segundos, r->speedup, r->resultados,
-            (i < n_resultados - 1) ? "," : "");
+            r->t_segundos, r->speedup, r->resultados);
+        /* Decomposicao PCIe — so nas linhas CUDA, onde medimos o kernel.
+           transferencia (H2D) = tempo total - tempo de kernel. */
+        if (strcmp(r->modo, "cuda") == 0 && r->t_kernel_s > 0.0) {
+            double t_transfer = r->t_segundos - r->t_kernel_s;
+            if (t_transfer < 0.0) t_transfer = 0.0;
+            fprintf(f, ",\"tempo_kernel_s\":%.8f,\"tempo_transfer_s\":%.8f",
+                    r->t_kernel_s, t_transfer);
+        }
+        fprintf(f, "}%s\n", (i < n_resultados - 1) ? "," : "");
     }
     fprintf(f, "  ]\n}\n");
     fclose(f);
@@ -413,10 +421,19 @@ static void salvar_run_matematica(const char *ts) {
         MathResult *r = &todos_math_resultados[i];
         fprintf(f,
             "    {\"algoritmo\":\"%s\",\"modo\":\"%s\",\"volume\":%d,"
-            "\"threads\":%d,\"tempo_s\":%.8f,\"speedup\":%.6f,\"valor\":%.6f}%s\n",
+            "\"threads\":%d,\"tempo_s\":%.8f,\"speedup\":%.6f,\"valor\":%.6f",
             r->algoritmo, r->modo, r->volume, r->threads,
-            r->t_segundos, r->speedup, r->valor,
-            (i < n_math_resultados - 1) ? "," : "");
+            r->t_segundos, r->speedup, r->valor);
+        /* Decomposicao na GPU — so nas linhas CUDA. Em Monte Carlo/Mandelbrot os
+           dados nascem no device: "transferencia" = overhead de setup (malloc/
+           memcpy/free) = tempo_total - kernel. Mesma convencao da busca. */
+        if (strcmp(r->modo, "cuda") == 0 && r->t_kernel_s > 0.0) {
+            double t_transfer = r->t_segundos - r->t_kernel_s;
+            if (t_transfer < 0.0) t_transfer = 0.0;
+            fprintf(f, ",\"tempo_kernel_s\":%.8f,\"tempo_transfer_s\":%.8f",
+                    r->t_kernel_s, t_transfer);
+        }
+        fprintf(f, "}%s\n", (i < n_math_resultados - 1) ? "," : "");
     }
     fprintf(f, "  ]\n}\n");
     fclose(f);
@@ -463,11 +480,11 @@ int main(void) {
         printf("  GPU : %-40s  CUDA REAL ativo (%d cores)\n",
                g_hw.gpu_nome, g_hw.gpu_cuda_cores);
     else
-        printf("  GPU : %-40s  (nenhuma GPU CUDA encontrada — usando gpu_sim)\n",
+        printf("  GPU : %-40s  (nenhuma GPU CUDA encontrada — somente CPU)\n",
                g_hw.gpu_nome);
 #else
-    printf("  GPU : %-40s  (simulacao CPU, %d cores configurados)\n",
-           g_hw.gpu_nome, g_hw.gpu_cuda_cores);
+    printf("  GPU : %-40s  (build CPU — sem GPU)\n",
+           g_hw.gpu_nome);
 #endif
     printf("  RAM : %d GB livres para benchmark\n", g_hw.ram_gb);
     printf("------------------------------------------------------------------\n");
@@ -527,11 +544,10 @@ int main(void) {
         double t_serial_hash    = 0.0;
 
         double best_sp_linear  = 1.0, best_sp_binaria = 1.0,
-               best_sp_hash = 1.0, best_sp_reduce = 1.0;
+               best_sp_hash = 1.0;
         char   best_lb_linear[24]  = "serial 1t";
         char   best_lb_binaria[24] = "serial 1t";
         char   best_lb_hash[24]    = "serial 1t";
-        char   best_lb_reduce[24]  = "serial 1t";
 
         /* ── BUSCA LINEAR ── */
         {
@@ -584,32 +600,6 @@ int main(void) {
                 }
             }
 
-            {
-                /* warmup */
-                { SearchResult _w = busca_linear_gpu_sim(dados, n, BUSCA_MIN, BUSCA_MAX);
-                  search_result_free(&_w); }
-                /* timed */
-                double t_gpu;
-                {
-                    int _nr = nrep(); double _tp = agora();
-                    for (int _ri = 0; _ri < _nr; _ri++) {
-                        if (_ri > 0) search_result_free(&r);
-                        r = busca_linear_gpu_sim(dados, n, BUSCA_MIN, BUSCA_MAX);
-                        double _tn = agora(); g_rep_buf[_ri] = _tn - _tp; _tp = _tn;
-                    }
-                    t_gpu = medianaK(g_rep_buf, _nr);
-                }
-                double speedup = t_serial_linear / t_gpu;
-                BenchmarkResult brg = {"linear", "gpu_sim", n, GPU_CUDA_CORES,
-                                        t_gpu, speedup, r.count};
-                imprimir_linha(&brg);
-                search_result_free(&r);
-                if (speedup > best_sp_linear) {
-                    best_sp_linear = speedup;
-                    snprintf(best_lb_linear, sizeof(best_lb_linear), "gpu_sim");
-                }
-            }
-
 #ifdef HAS_CUDA
             if (cuda_ok) {
                 int _nr = nrep();
@@ -634,6 +624,7 @@ int main(void) {
 
                 BenchmarkResult brc = {"linear", "cuda", n, GPU_CUDA_CORES,
                                         t_med, sp_total, cuda_count};
+                brc.t_kernel_s = tk_med;   /* transferência PCIe = t_med - tk_med */
                 imprimir_linha(&brc);
 
                 printf("      [GPU real] kernel puro: %8.3f ms (%.2fx)  "
@@ -699,32 +690,6 @@ int main(void) {
                 }
             }
 
-            {
-                /* warmup */
-                { SearchResult _w = busca_binaria_gpu_sim(dados_ord, n, BUSCA_ALVO);
-                  search_result_free(&_w); }
-                /* timed */
-                double t_gpu;
-                {
-                    int _nr = nrep(); double _tp = agora();
-                    for (int _ri = 0; _ri < _nr; _ri++) {
-                        if (_ri > 0) search_result_free(&r);
-                        r = busca_binaria_gpu_sim(dados_ord, n, BUSCA_ALVO);
-                        double _tn = agora(); g_rep_buf[_ri] = _tn - _tp; _tp = _tn;
-                    }
-                    t_gpu = medianaK(g_rep_buf, _nr);
-                }
-                double speedup = t_serial_binaria / t_gpu;
-                BenchmarkResult brg = {"binaria", "gpu_sim", n, GPU_CUDA_CORES,
-                                        t_gpu, speedup, r.count};
-                imprimir_linha(&brg);
-                search_result_free(&r);
-                if (speedup > best_sp_binaria) {
-                    best_sp_binaria = speedup;
-                    snprintf(best_lb_binaria, sizeof(best_lb_binaria), "gpu_sim");
-                }
-            }
-
 #ifdef HAS_CUDA
             if (cuda_ok) {
                 int _nr = nrep();
@@ -749,6 +714,7 @@ int main(void) {
 
                 BenchmarkResult brc = {"binaria", "cuda", n, GPU_CUDA_CORES,
                                         t_med, sp_total, cuda_count};
+                brc.t_kernel_s = tk_med;   /* transferência PCIe = t_med - tk_med */
                 imprimir_linha(&brc);
 
                 printf("      [GPU real] kernel puro: %8.3f ms (%.2fx)  "
@@ -821,32 +787,6 @@ int main(void) {
                 }
             }
 
-            {
-                /* warmup */
-                { SearchResult _w = hash_lookup_gpu_sim(ht, ids, n_ids);
-                  search_result_free(&_w); }
-                /* timed */
-                double t_gpu;
-                {
-                    int _nr = nrep(); double _tp = agora();
-                    for (int _ri = 0; _ri < _nr; _ri++) {
-                        if (_ri > 0) search_result_free(&r);
-                        r = hash_lookup_gpu_sim(ht, ids, n_ids);
-                        double _tn = agora(); g_rep_buf[_ri] = _tn - _tp; _tp = _tn;
-                    }
-                    t_gpu = medianaK(g_rep_buf, _nr);
-                }
-                double speedup = t_serial_hash / t_gpu;
-                BenchmarkResult brg = {"hash", "gpu_sim", n, GPU_CUDA_CORES,
-                                        t_gpu, speedup, r.count};
-                imprimir_linha(&brg);
-                search_result_free(&r);
-                if (speedup > best_sp_hash) {
-                    best_sp_hash = speedup;
-                    snprintf(best_lb_hash, sizeof(best_lb_hash), "gpu_sim");
-                }
-            }
-
 #ifdef HAS_CUDA
             if (cuda_ok) {
                 int _nr = nrep();
@@ -869,6 +809,7 @@ int main(void) {
 
                 BenchmarkResult brc = {"hash", "cuda", n, GPU_CUDA_CORES,
                                         t_med, sp_total, cuda_count};
+                brc.t_kernel_s = tk_med;   /* transferência PCIe = t_med - tk_med */
                 imprimir_linha(&brc);
 
                 printf("      [GPU real] kernel puro: %8.3f ms (%.2fx)  "
@@ -883,132 +824,15 @@ int main(void) {
 #endif
         }
 
-        imprimir_separador();
-
-        /* ── REDUCE PARALELO ── */
-        {
-            SearchResult r;
-            double t_serial_reduce;
-
-            /* warmup */
-            { SearchResult _w = reduce_paralelo_serial(dados, n, BUSCA_MIN, BUSCA_MAX);
-              search_result_free(&_w); }
-            /* timed */
-            {
-                int _nr = nrep(); double _tp = agora();
-                for (int _ri = 0; _ri < _nr; _ri++) {
-                    if (_ri > 0) search_result_free(&r);
-                    r = reduce_paralelo_serial(dados, n, BUSCA_MIN, BUSCA_MAX);
-                    double _tn = agora(); g_rep_buf[_ri] = _tn - _tp; _tp = _tn;
-                }
-                t_serial_reduce = medianaK(g_rep_buf, _nr);
-            }
-            BenchmarkResult br = {"reduce", "serial", n, 1,
-                                   t_serial_reduce, 1.0, r.count};
-            imprimir_linha(&br);
-            search_result_free(&r);
-
-            for (int ti = 1; ti < N_THREADS; ti++) {
-                int th = THREADS[ti];
-                /* warmup */
-                { SearchResult _w = reduce_paralelo_openmp(dados, n, BUSCA_MIN, BUSCA_MAX, th);
-                  search_result_free(&_w); }
-                /* timed */
-                double t_par;
-                {
-                    int _nr = nrep(); double _tp = agora();
-                    for (int _ri = 0; _ri < _nr; _ri++) {
-                        if (_ri > 0) search_result_free(&r);
-                        r = reduce_paralelo_openmp(dados, n, BUSCA_MIN, BUSCA_MAX, th);
-                        double _tn = agora(); g_rep_buf[_ri] = _tn - _tp; _tp = _tn;
-                    }
-                    t_par = medianaK(g_rep_buf, _nr);
-                }
-                double speedup = t_serial_reduce / t_par;
-                BenchmarkResult bro = {"reduce", "openmp", n, th,
-                                        t_par, speedup, r.count};
-                imprimir_linha(&bro);
-                search_result_free(&r);
-                if (speedup > best_sp_reduce) {
-                    best_sp_reduce = speedup;
-                    snprintf(best_lb_reduce, sizeof(best_lb_reduce), "openmp %dt", th);
-                }
-            }
-
-            {
-                /* warmup */
-                { SearchResult _w = reduce_paralelo_gpu_sim(dados, n, BUSCA_MIN, BUSCA_MAX);
-                  search_result_free(&_w); }
-                /* timed */
-                double t_gpu;
-                {
-                    int _nr = nrep(); double _tp = agora();
-                    for (int _ri = 0; _ri < _nr; _ri++) {
-                        if (_ri > 0) search_result_free(&r);
-                        r = reduce_paralelo_gpu_sim(dados, n, BUSCA_MIN, BUSCA_MAX);
-                        double _tn = agora(); g_rep_buf[_ri] = _tn - _tp; _tp = _tn;
-                    }
-                    t_gpu = medianaK(g_rep_buf, _nr);
-                }
-                double speedup = t_serial_reduce / t_gpu;
-                BenchmarkResult brg = {"reduce", "gpu_sim", n, GPU_CUDA_CORES,
-                                        t_gpu, speedup, r.count};
-                imprimir_linha(&brg);
-                search_result_free(&r);
-                if (speedup > best_sp_reduce) {
-                    best_sp_reduce = speedup;
-                    snprintf(best_lb_reduce, sizeof(best_lb_reduce), "gpu_sim");
-                }
-            }
-
-#ifdef HAS_CUDA
-            if (cuda_ok) {
-                int _nr = nrep();
-                double tt[MAX_REP], tk[MAX_REP];
-                SearchResult rc;
-                /* warmup */
-                { SearchResult _w = reduce_paralelo_cuda(dados, n, BUSCA_MIN, BUSCA_MAX,
-                                                         &tt[0], &tk[0]);
-                  search_result_free(&_w); }
-                /* timed */
-                int reduce_count = 0;
-                for (int _ri = 0; _ri < _nr; _ri++) {
-                    rc = reduce_paralelo_cuda(dados, n, BUSCA_MIN, BUSCA_MAX,
-                                              &tt[_ri], &tk[_ri]);
-                    if (_ri == 0) reduce_count = rc.count;
-                    search_result_free(&rc);
-                }
-                double t_med  = medianaK(tt, _nr);
-                double tk_med = medianaK(tk, _nr);
-                double sp_total  = t_serial_reduce / t_med;
-                double sp_kernel = t_serial_reduce / tk_med;
-
-                BenchmarkResult brc = {"reduce", "cuda", n, GPU_CUDA_CORES,
-                                        t_med, sp_total, reduce_count};
-                imprimir_linha(&brc);
-
-                printf("      [GPU reduce] kernel puro: %8.3f ms (%.2fx)  "
-                       "| H2D+kernel (speedup acima): %8.3f ms\n",
-                       tk_med * 1000.0, sp_kernel, t_med * 1000.0);
-
-                if (sp_total > best_sp_reduce) {
-                    best_sp_reduce = sp_total;
-                    snprintf(best_lb_reduce, sizeof(best_lb_reduce), "cuda");
-                }
-            }
-#endif
-        }
-
         printf("|%s|%s|%s|%s|%s|%s|%s|\n",
                "==============", "==========", "==============",
                "=========", "============", "==========", "============");
 
         printf("  Melhor speedup:  linear=%.2fx (%s)  binaria=%.2fx (%s)"
-               "  hash=%.2fx (%s)  reduce=%.2fx (%s)\n\n",
+               "  hash=%.2fx (%s)\n\n",
                best_sp_linear,  best_lb_linear,
                best_sp_binaria, best_lb_binaria,
-               best_sp_hash,    best_lb_hash,
-               best_sp_reduce,  best_lb_reduce);
+               best_sp_hash,    best_lb_hash);
 
         hash_destruir(ht);
         free(ids);
@@ -1020,9 +844,7 @@ int main(void) {
     printf("  Speedup S(N) = T_serial / T_paralelo\n");
     printf("  Amdahl:    S(N) = 1 / (fs + fp/N)\n");
     printf("  Gustafson: S(N) = N - fs*(N-1)\n");
-    printf("  gpu_sim: threads=%d = CUDA cores de %s (simulacao CPU)\n",
-           GPU_CUDA_CORES, g_hw.gpu_nome);
-    printf("  reduce:  reducao em arvore — fp~100%%, ideal para GPU\n\n");
+    printf("  cuda:    tempo_s = H2D(PCIe) + kernel;  transferencia = tempo_s - kernel\n\n");
 
     /* ═══════════════════════════════════════════════════════
        LOOP DE SIMULACAO MATEMATICA
@@ -1060,7 +882,7 @@ int main(void) {
                 t_serial_mc = medianaK(g_rep_buf, _nr);
                 v_serial = _vsum / _nr;
             }
-            MathResult mr;
+            MathResult mr = {0};
             strcpy(mr.algoritmo, "montecarlo");
             strcpy(mr.modo, "serial");
             mr.volume = n; mr.threads = 1;
@@ -1083,7 +905,7 @@ int main(void) {
                     val_avg = _vsum / _nr;
                 }
                 double speedup = (t_par > 0.0) ? t_serial_mc / t_par : 1.0;
-                MathResult mro;
+                MathResult mro = {0};
                 strcpy(mro.algoritmo, "montecarlo");
                 strcpy(mro.modo, "openmp");
                 mro.volume = n; mro.threads = th;
@@ -1091,48 +913,31 @@ int main(void) {
                 imprimir_linha_math(&mro);
             }
 
-            /* GPU sim */
-            {
-                montecarlo_gpu_sim((long)n); /* warmup */
-                double t_gpu, val_avg;
-                {
-                    int _nr = nrep(); double _tp = agora(), _vsum = 0.0;
-                    for (int _ri = 0; _ri < _nr; _ri++) {
-                        double _v = montecarlo_gpu_sim((long)n);
-                        double _tn = agora(); g_rep_buf[_ri] = _tn - _tp; _tp = _tn;
-                        _vsum += _v;
-                    }
-                    t_gpu = medianaK(g_rep_buf, _nr);
-                    val_avg = _vsum / _nr;
-                }
-                double speedup = (t_gpu > 0.0) ? t_serial_mc / t_gpu : 1.0;
-                MathResult mrg;
-                strcpy(mrg.algoritmo, "montecarlo");
-                strcpy(mrg.modo, "gpu_sim");
-                mrg.volume = n; mrg.threads = GPU_CUDA_CORES;
-                mrg.t_segundos = t_gpu; mrg.speedup = speedup; mrg.valor = val_avg;
-                imprimir_linha_math(&mrg);
-            }
-
 #ifdef HAS_CUDA
             if (cuda_ok) {
                 int _nr = nrep();
-                double timed[MAX_REP];
+                double total[MAX_REP], kern[MAX_REP];
                 /* warmup */
                 { double _tk; montecarlo_cuda((long)n, &_tk); }
-                /* timed */
+                /* timed: total = parede (malloc+kernel+D2H+free) via agora();
+                   kern = so o kernel (cudaEvent, vindo do wrapper).
+                   Monte Carlo gera os pontos no device -> "transferencia" = overhead de setup. */
                 double _vsum = 0.0;
                 for (int _ri = 0; _ri < _nr; _ri++) {
-                    double _v = montecarlo_cuda((long)n, &timed[_ri]);
+                    double _t0 = agora();
+                    double _v = montecarlo_cuda((long)n, &kern[_ri]);
+                    total[_ri] = agora() - _t0;
                     _vsum += _v;
                 }
-                double t_med = medianaK(timed, _nr);
+                double t_med  = medianaK(total, _nr);
+                double tk_med = medianaK(kern, _nr);
                 double speedup = (t_med > 0.0) ? t_serial_mc / t_med : 1.0;
-                MathResult mrc;
+                MathResult mrc = {0};
                 strcpy(mrc.algoritmo, "montecarlo");
                 strcpy(mrc.modo, "cuda");
                 mrc.volume = n; mrc.threads = GPU_CUDA_CORES;
                 mrc.t_segundos = t_med; mrc.speedup = speedup; mrc.valor = _vsum / _nr;
+                mrc.t_kernel_s = tk_med;
                 imprimir_linha_math(&mrc);
             }
 #endif
@@ -1159,7 +964,7 @@ int main(void) {
                 t_serial_mb = medianaK(g_rep_buf, _nr);
                 v_serial = _vsum / _nr;
             }
-            MathResult mr;
+            MathResult mr = {0};
             strcpy(mr.algoritmo, "mandelbrot");
             strcpy(mr.modo, "serial");
             mr.volume = n; mr.threads = 1;
@@ -1182,7 +987,7 @@ int main(void) {
                     vavg = _vsum / _nr;
                 }
                 double speedup = (t_par > 0.0) ? t_serial_mb / t_par : 1.0;
-                MathResult mro;
+                MathResult mro = {0};
                 strcpy(mro.algoritmo, "mandelbrot");
                 strcpy(mro.modo, "openmp");
                 mro.volume = n; mro.threads = th;
@@ -1190,48 +995,31 @@ int main(void) {
                 imprimir_linha_math(&mro);
             }
 
-            /* GPU sim */
-            {
-                mandelbrot_gpu_sim(n); /* warmup */
-                double t_gpu, vavg;
-                {
-                    int _nr = nrep(); double _tp = agora(), _vsum = 0.0;
-                    for (int _ri = 0; _ri < _nr; _ri++) {
-                        double _v = mandelbrot_gpu_sim(n);
-                        double _tn = agora(); g_rep_buf[_ri] = _tn - _tp; _tp = _tn;
-                        _vsum += _v;
-                    }
-                    t_gpu = medianaK(g_rep_buf, _nr);
-                    vavg = _vsum / _nr;
-                }
-                double speedup = (t_gpu > 0.0) ? t_serial_mb / t_gpu : 1.0;
-                MathResult mrg;
-                strcpy(mrg.algoritmo, "mandelbrot");
-                strcpy(mrg.modo, "gpu_sim");
-                mrg.volume = n; mrg.threads = GPU_CUDA_CORES;
-                mrg.t_segundos = t_gpu; mrg.speedup = speedup; mrg.valor = vavg;
-                imprimir_linha_math(&mrg);
-            }
-
 #ifdef HAS_CUDA
             if (cuda_ok) {
                 int _nr = nrep();
-                double timed[MAX_REP];
+                double total[MAX_REP], kern[MAX_REP];
                 /* warmup */
                 { double _tk; mandelbrot_cuda(n, &_tk); }
-                /* timed */
+                /* timed: total = parede (malloc+kernel+D2H+free) via agora();
+                   kern = so o kernel (cudaEvent, vindo do wrapper).
+                   Mandelbrot calcula cada pixel no device -> "transferencia" = overhead de setup. */
                 double _vsum = 0.0;
                 for (int _ri = 0; _ri < _nr; _ri++) {
-                    double _v = mandelbrot_cuda(n, &timed[_ri]);
+                    double _t0 = agora();
+                    double _v = mandelbrot_cuda(n, &kern[_ri]);
+                    total[_ri] = agora() - _t0;
                     _vsum += _v;
                 }
-                double t_med = medianaK(timed, _nr);
+                double t_med  = medianaK(total, _nr);
+                double tk_med = medianaK(kern, _nr);
                 double speedup = (t_med > 0.0) ? t_serial_mb / t_med : 1.0;
-                MathResult mrc;
+                MathResult mrc = {0};
                 strcpy(mrc.algoritmo, "mandelbrot");
                 strcpy(mrc.modo, "cuda");
                 mrc.volume = n; mrc.threads = GPU_CUDA_CORES;
                 mrc.t_segundos = t_med; mrc.speedup = speedup; mrc.valor = _vsum / _nr;
+                mrc.t_kernel_s = tk_med;
                 imprimir_linha_math(&mrc);
             }
 #endif

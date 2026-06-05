@@ -20,7 +20,6 @@ void search_result_free(SearchResult *r);
 ───────────────────────────────────────────── */
 SearchResult busca_linear_serial  (Event *dados, int n, float min, float max);
 SearchResult busca_linear_openmp  (Event *dados, int n, float min, float max, int threads);
-SearchResult busca_linear_gpu_sim (Event *dados, int n, float min, float max);
 
 /* ─────────────────────────────────────────────
    BUSCA BINÁRIA — O(log n)
@@ -29,7 +28,6 @@ SearchResult busca_linear_gpu_sim (Event *dados, int n, float min, float max);
 ───────────────────────────────────────────── */
 SearchResult busca_binaria_serial  (Event *dados, int n, float alvo);
 SearchResult busca_binaria_openmp  (Event *dados, int n, float alvo, int threads);
-SearchResult busca_binaria_gpu_sim (Event *dados, int n, float alvo);
 
 /* ─────────────────────────────────────────────
    HASH LOOKUP — O(1) amortizado
@@ -52,17 +50,5 @@ void         hash_destruir (HashTable *ht);
 
 SearchResult hash_lookup_serial  (HashTable *ht, uint32_t id);
 SearchResult hash_lookup_openmp  (HashTable *ht, uint32_t *ids, int n_ids, int threads);
-SearchResult hash_lookup_gpu_sim (HashTable *ht, uint32_t *ids, int n_ids);
-
-/* ─────────────────────────────────────────────
-   REDUCE PARALELO — contagem com redução em árvore
-   Conta eventos com valor em [min, max].
-   Algoritmo ideal para GPU: embaraçosamente paralelo,
-   sem dependência entre elementos, sem array de saída grande.
-   Retorna count = número de matches; itens = NULL.
-───────────────────────────────────────────── */
-SearchResult reduce_paralelo_serial  (Event *dados, int n, float min, float max);
-SearchResult reduce_paralelo_openmp  (Event *dados, int n, float min, float max, int threads);
-SearchResult reduce_paralelo_gpu_sim (Event *dados, int n, float min, float max);
 
 #endif /* SEARCH_H */

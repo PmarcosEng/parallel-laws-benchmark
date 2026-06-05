@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Dashboard — Amdahl &amp; Gustafson Benchmark</title>
+<title>Dashboard — CPU × GPU: Amdahl &amp; Gustafson</title>
 <style>
 :root{--bg:#0f172a;--sf:#1e293b;--bd:#334155;--tx:#e2e8f0;--mt:#94a3b8;--acc:#60a5fa}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -34,6 +34,11 @@ body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-
 .cb{background:var(--sf);border:1px solid var(--bd);border-radius:.5rem;padding:.85rem 1rem}
 .cbt{font-size:.68rem;color:var(--mt);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem}
 .cb canvas{max-height:260px}
+.cb{position:relative}
+.exp-btn{position:absolute;top:.5rem;right:.5rem;z-index:5;background:var(--bg);border:1px solid var(--bd);color:var(--mt);font-size:.66rem;padding:.15rem .45rem;border-radius:.3rem;cursor:pointer;opacity:.6;transition:opacity .15s,color .15s,border-color .15s}
+.exp-btn:hover{opacity:1;color:var(--tx);border-color:var(--acc)}
+.exp-all{background:var(--sf);border:1px solid var(--bd);color:var(--tx);padding:.35rem .7rem;border-radius:.35rem;cursor:pointer;font-size:.78rem;margin-left:auto}
+.exp-all:hover{border-color:var(--acc)}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
 .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem}
 .run-sel{background:var(--sf);border:1px solid var(--bd);color:var(--tx);border-radius:.35rem;padding:.3rem .6rem;font-size:.82rem;margin-bottom:1rem}
@@ -93,7 +98,7 @@ td{padding:.35rem .6rem;border-bottom:1px solid var(--bd)}
 <body>
 
 <div id="hdr">
-  <h1>Benchmark &mdash; Amdahl &amp; Gustafson</h1>
+  <h1>CPU &times; GPU &mdash; Amdahl &amp; Gustafson</h1>
   <div class="tabs">
     <button class="tab active" onclick="switchTab('busca')">Busca de Eventos</button>
     <button class="tab" onclick="switchTab('matematica')">Matem&aacute;tica Densa</button>
@@ -101,6 +106,11 @@ td{padding:.35rem .6rem;border-bottom:1px solid var(--bd)}
     <button class="tab" onclick="switchTab('panorama')">Panorama Geral</button>
     <button class="tab" onclick="switchTab('hardware')">Comparar Hardware</button>
   </div>
+  <button class="exp-all" type="button" onclick="exportAllVisible()" title="Baixar todos os gráficos da aba atual como PNG">&#x2B07; Exportar gráficos</button>
+</div>
+
+<div id="rqbanner" style="padding:.55rem 1.5rem;background:var(--sf);border-bottom:1px solid var(--bd);font-size:.82rem;color:var(--mt);line-height:1.5">
+  <b style="color:var(--tx)">Pergunta de pesquisa:</b> em quais cen&aacute;rios &mdash; tipo de carga (compute-bound &times; memory-bound) e volume de dados &mdash; a CPU paralela ou a GPU entrega maior speedup, e como o custo de transfer&ecirc;ncia PCIe determina esse limite?
 </div>
 
 <div id="dropzone" onclick="document.getElementById('drop-input').click()">
@@ -201,7 +211,67 @@ function mkChart(id,type,labels,datasets,extra){
   if(extra&&extra.yTitle)sc.y.title={display:true,text:extra.yTitle,color:'#64748b'};
   if(extra&&extra.xTitle)sc.x.title={display:true,text:extra.xTitle,color:'#64748b'};
   if(extra&&extra.yMin!=null)sc.y.min=extra.yMin;
+  if(extra&&extra.stacked){sc.x.stacked=true;sc.y.stacked=true;}
   CHARTS[id]=new Chart(el,{type,data:{labels,datasets},options:{...DEF_OPT,scales:sc}});
+}
+
+/* ── Decomposição do tempo na GPU (modo cuda): transferência/overhead × kernel ──
+   absId = barras empilhadas em ms (obrigatório). pctId = barras 100% (opcional; null pula).
+   Mostra aviso "recompile" se o run não tiver tempo_transfer_s/tempo_kernel_s. */
+function drawDecomp(run,algo,gc,absId,pctId,transferLabel){
+  const VS=uniq((run.resultados||[]).map(r=>r.volume)).sort((a,b)=>a-b);
+  const vols=VS.filter(v=>{const r=find(run,algo,v,'cuda',gc);return r&&typeof r.tempo_transfer_s==='number'&&typeof r.tempo_kernel_s==='number';});
+  const absEl=document.getElementById(absId);const absCard=absEl?absEl.closest('.cb'):null;
+  const pctEl=pctId?document.getElementById(pctId):null;const pctCard=pctEl?pctEl.closest('.cb'):null;
+  if(!vols.length){
+    const msg='<div class="empty" style="margin:0">Sem dados de transferência neste run. Recompile o benchmark (build CUDA) e rode de novo — os JSONs novos terão <b>tempo_transfer_s</b> e <b>tempo_kernel_s</b> nas linhas <code>cuda</code>.</div>';
+    if(absCard)absCard.innerHTML=msg;
+    if(pctCard)pctCard.innerHTML='';
+    return;
+  }
+  const tr=vols.map(v=>find(run,algo,v,'cuda',gc).tempo_transfer_s*1000);
+  const ke=vols.map(v=>find(run,algo,v,'cuda',gc).tempo_kernel_s*1000);
+  mkChart(absId,'bar',vols.map(fv),[
+    {label:transferLabel,data:tr,backgroundColor:'#f59e0b',stack:'s'},
+    {label:'Kernel (GPU)',data:ke,backgroundColor:'#3b82f6',stack:'s'}
+  ],{stacked:true,xTitle:'Volume de dados',yTitle:'Tempo (ms)',yMin:0});
+  if(pctId){
+    const pc=(a,b)=>(a+b)>0?a/(a+b)*100:0;
+    mkChart(pctId,'bar',vols.map(fv),[
+      {label:transferLabel,data:vols.map((v,i)=>pc(tr[i],ke[i])),backgroundColor:'#f59e0b',stack:'s'},
+      {label:'Kernel (GPU)',data:vols.map((v,i)=>pc(ke[i],tr[i])),backgroundColor:'#3b82f6',stack:'s'}
+    ],{stacked:true,xTitle:'Volume de dados',yTitle:'% do tempo na GPU',yMin:0});
+  }
+}
+
+/* ── Export de gráficos como PNG (fundo sólido, evita PNG transparente) ── */
+function exportCanvasPng(canvas,filename){
+  const tmp=document.createElement('canvas');
+  tmp.width=canvas.width;tmp.height=canvas.height;
+  const ctx=tmp.getContext('2d');
+  ctx.fillStyle='#1e293b';ctx.fillRect(0,0,tmp.width,tmp.height);
+  ctx.drawImage(canvas,0,0);
+  const a=document.createElement('a');
+  a.download=filename;a.href=tmp.toDataURL('image/png');
+  document.body.appendChild(a);a.click();a.remove();
+}
+function slugify(s){return(s||'grafico').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,60)||'grafico';}
+function addExportButtons(){
+  document.querySelectorAll('#content .cb').forEach(card=>{
+    const canvas=card.querySelector('canvas');
+    if(!canvas||card.querySelector('.exp-btn'))return;
+    const btn=document.createElement('button');
+    btn.className='exp-btn';btn.type='button';btn.textContent='⬇ PNG';
+    btn.title='Baixar este gráfico como PNG';
+    btn.onclick=()=>{const t=card.querySelector('.cbt');exportCanvasPng(canvas,slugify(t?t.textContent:canvas.id)+'.png');};
+    card.appendChild(btn);
+  });
+}
+function exportAllVisible(){
+  const panel=document.querySelector('.panel.active');if(!panel)return;
+  const cards=[...panel.querySelectorAll('.cb')].filter(c=>c.querySelector('canvas'));
+  if(!cards.length){alert('Nenhum gráfico visível nesta aba para exportar.');return;}
+  cards.forEach((card,i)=>setTimeout(()=>{const cv=card.querySelector('canvas');const t=card.querySelector('.cbt');exportCanvasPng(cv,slugify(t?t.textContent:cv.id)+'.png');},i*350));
 }
 
 /* FILE LOADING */
@@ -267,9 +337,9 @@ function switchTab(name){
 }
 
 /* ── BUSCA ── */
-const ALGO_BUSCA=['linear','binaria','hash','reduce'];
-const ALGO_LABEL={linear:'Busca Linear',binaria:'Busca Bin\u00e1ria',hash:'Hash Lookup',reduce:'Reduce Paralelo'};
-const ALGO_COLOR={linear:'#60a5fa',binaria:'#34d399',hash:'#fbbf24',reduce:'#f87171'};
+const ALGO_BUSCA=['linear','binaria','hash'];
+const ALGO_LABEL={linear:'Busca Linear',binaria:'Busca Bin\u00e1ria',hash:'Hash Lookup'};
+const ALGO_COLOR={linear:'#60a5fa',binaria:'#34d399',hash:'#fbbf24'};
 const VOL_COLORS=['#94a3b8','#60a5fa','#34d399','#fbbf24','#f87171','#c084fc','#fb923c','#38bdf8'];
 
 function renderBusca(){
@@ -282,10 +352,6 @@ function renderBusca(){
   const gc=(run.hardware||{}).gpu_cuda_cores||896;
   const threadsList=uniq((run.resultados||[]).filter(r=>r.modo==='openmp').map(r=>r.threads)).sort((a,b)=>a-b);
   const maxTh=threadsList.length?Math.max(...threadsList):1;
-  const XMOD=[{m:'serial',t:1},...threadsList.map(t=>({m:'openmp',t})),{m:'gpu_sim',t:gc}];
-  if(hasCuda)XMOD.push({m:'cuda',t:gc});
-  const XLBL=XMOD.map(x=>x.m==='serial'?'Serial':x.m==='gpu_sim'?'GPU Sim':x.m==='cuda'?'GPU Real':x.t+'t');
-
   cont.innerHTML=`
   <div class="sec"><div class="sh"><div class="sn">2</div><div class="st">Tempo serial &times; volume (escala log)</div></div>
     <p class="exp">Tempo de execu&ccedil;&atilde;o serial para cada algoritmo. Eixo Y logar&iacute;tmico: um degrau = 10&times;. Hash O(1) quase horizontal; Linear O(n) sobe claramente.</p>
@@ -297,18 +363,24 @@ function renderBusca(){
       <div class="cb"><div class="cbt">Busca Bin&aacute;ria</div><canvas id="bc2b"></canvas></div>
       <div class="cb"><div class="cbt">Hash Lookup</div><canvas id="bc2c"></canvas></div>
     </div>
-    <div style="margin-top:1rem"><div class="cb"><div class="cbt" style="color:#f87171">Reduce Paralelo &mdash; fp~100%, ideal para GPU</div><canvas id="bc2d"></canvas></div></div></div>
+    </div>
   <div class="sec"><div class="sh"><div class="sn">4</div><div class="st">Lei de Gustafson: speedup max threads &times; volume</div></div>
     <p class="exp">Gustafson: aumentar o volume junto com os threads mant&eacute;m ou melhora o speedup. Linha subindo = boa escalabilidade fraca.</p>
     <div class="cb"><div class="cbt">Speedup ${maxTh}t &times; volume</div><canvas id="bc3"></canvas></div></div>
-  <div class="sec"><div class="sh"><div class="sn">5</div><div class="st">Tabela resumo</div></div>
+  <div class="sec"><div class="sh"><div class="sn">5</div><div class="st">Decomposi&ccedil;&atilde;o do tempo na GPU: transfer&ecirc;ncia PCIe &times; kernel (Busca Linear)</div></div>
+    <p class="exp">Tempo total na GPU = <b>transfer&ecirc;ncia dos dados pelo barramento PCIe (H2D)</b> + execu&ccedil;&atilde;o do <b>kernel</b>. &Agrave; esquerda, em <b>ms reais</b>: a transfer&ecirc;ncia (laranja) ofusca o kernel (azul). &Agrave; direita, em <b>%</b>: a fatia de transfer&ecirc;ncia &mdash; a fra&ccedil;&atilde;o serial de Amdahl &mdash; encolhe conforme o volume cresce (Gustafson). Bin&aacute;ria e hash s&atilde;o ainda mais dominadas por transfer&ecirc;ncia. Requer build CUDA recompilado (<code>tempo_transfer_s</code> / <code>tempo_kernel_s</code>).</p>
+    <div class="g2">
+      <div class="cb"><div class="cbt">Tempo real na GPU &mdash; transfer&ecirc;ncia PCIe + kernel (ms)</div><canvas id="bc5abs"></canvas></div>
+      <div class="cb"><div class="cbt">Propor&ccedil;&atilde;o &mdash; transfer&ecirc;ncia PCIe vs kernel (%)</div><canvas id="bc5pct"></canvas></div>
+    </div></div>
+  <div class="sec"><div class="sh"><div class="sn">6</div><div class="st">Tabela resumo</div></div>
     <p class="exp"><span style="color:#86efac">Verde</span> &ge; 2&times;, <span style="color:#fde68a">Amarelo</span> 1-2&times;, <span style="color:#fca5a5">Vermelho</span> &lt; 1&times;</p>
     <div class="cb" id="bc4-tbl"></div></div>`;
 
   mkChart('bc1','line',VS.map(fv),ALGO_BUSCA.map(algo=>({label:ALGO_LABEL[algo],data:VS.map(v=>{const r=find(run,algo,v,'serial',1);return r?r.tempo_s:null;}),borderColor:ALGO_COLOR[algo],backgroundColor:ALGO_COLOR[algo]+'33',pointRadius:5,tension:.3,fill:false})),{ylog:true,xTitle:'Volume de dados',yTitle:'Tempo (s) — escala log'});
 
   ALGO_BUSCA.forEach((algo,ai)=>{
-    const cid=['bc2a','bc2b','bc2c','bc2d'][ai];
+    const cid=['bc2a','bc2b','bc2c'][ai];
     const maxV=Math.max(...VS);const fs=estimateFs(run,algo,maxV);
     const XMOD_algo=[{m:'serial',t:1},...threadsList.map(t=>({m:'openmp',t}))];
     if(hasCuda)XMOD_algo.push({m:'cuda',t:gc});
@@ -323,14 +395,16 @@ function renderBusca(){
   });
 
   const gc3ds=ALGO_BUSCA.map(algo=>({label:ALGO_LABEL[algo]+' ('+maxTh+'t)',data:VS.map(v=>{const r=find(run,algo,v,'openmp',maxTh);return r?r.speedup:null;}),borderColor:ALGO_COLOR[algo],backgroundColor:ALGO_COLOR[algo]+'33',pointRadius:6,tension:.3,fill:false}));
-  gc3ds.push({label:'GPU Sim (linear)',data:VS.map(v=>{const r=find(run,'linear',v,'gpu_sim',gc);return r?r.speedup:null;}),borderColor:'#94a3b8',backgroundColor:'#94a3b833',pointRadius:5,borderDash:[5,3],tension:.3,fill:false});
-  if(hasCuda){gc3ds.push({label:'GPU Real—linear',data:VS.map(v=>{const r=find(run,'linear',v,'cuda',gc);return r?r.speedup:null;}),borderColor:'#a78bfa',backgroundColor:'#a78bfa33',pointRadius:7,pointStyle:'star',tension:.3,fill:false});gc3ds.push({label:'GPU Real—reduce',data:VS.map(v=>{const r=find(run,'reduce',v,'cuda',gc);return r?r.speedup:null;}),borderColor:'#f87171',backgroundColor:'#f8717133',pointRadius:7,pointStyle:'triangle',tension:.3,fill:false});}
+  if(hasCuda){gc3ds.push({label:'GPU Real—linear',data:VS.map(v=>{const r=find(run,'linear',v,'cuda',gc);return r?r.speedup:null;}),borderColor:'#a78bfa',backgroundColor:'#a78bfa33',pointRadius:7,pointStyle:'star',tension:.3,fill:false});}
   gc3ds.push({label:'Break-even',data:VS.map(()=>1),borderColor:'#ef4444',borderDash:[3,3],borderWidth:1,pointRadius:0,fill:false});
   mkChart('bc3','line',VS.map(fv),gc3ds,{xTitle:'Volume de dados',yTitle:'Speedup S(N)'});
 
-  let h='<table><thead><tr><th>Algoritmo</th>';
-  VS.forEach(v=>h+=`<th>OpenMP ${maxTh}t &mdash; ${fv(v)}</th>`);if(hasCuda)VS.forEach(v=>h+=`<th style="color:#a78bfa">GPU Real &mdash; ${fv(v)}</th>`);h+='</tr></thead><tbody>';
-  ALGO_BUSCA.forEach(algo=>{h+=`<tr><td><b>${ALGO_LABEL[algo]}</b></td>`;VS.forEach(v=>{const r=find(run,algo,v,'openmp',maxTh);const sp=r?r.speedup:null;const cl=sp==null?'':sp>=2?'ok':sp>=1?'wa':'ba';h+=`<td class="${cl}">${sp!=null?sp.toFixed(2)+'x':'-'}</td>`;});if(hasCuda)VS.forEach(v=>{const r=find(run,algo,v,'cuda',gc);const sp=r?r.speedup:null;const cl=sp==null?'':sp>=2?'ok':sp>=1?'wa':'ba';h+=`<td class="${cl}" style="outline:1px solid #7c3aed44">${sp!=null?sp.toFixed(2)+'x':'-'}</td>`;});h+='</tr>';});
+  /* ── Decomposição GPU (Busca Linear, modo cuda): transferência PCIe vs kernel ── */
+  drawDecomp(run,'linear',gc,'bc5abs','bc5pct','Transferência PCIe (H2D)');
+
+  let h='<table><thead><tr><th>Algoritmo</th><th>Threads</th>';
+  VS.forEach(v=>h+=`<th>OpenMP &mdash; ${fv(v)}</th>`);if(hasCuda)VS.forEach(v=>h+=`<th style="color:#a78bfa">GPU Real &mdash; ${fv(v)}</th>`);h+='</tr></thead><tbody>';
+  ALGO_BUSCA.forEach(algo=>{h+=`<tr><td><b>${ALGO_LABEL[algo]}</b></td><td style="color:var(--mt);font-size:.72rem;white-space:nowrap">OpenMP ${maxTh}t${hasCuda?` &middot; GPU ${gc}`:''}</td>`;VS.forEach(v=>{const r=find(run,algo,v,'openmp',maxTh);const sp=r?r.speedup:null;const cl=sp==null?'':sp>=2?'ok':sp>=1?'wa':'ba';h+=`<td class="${cl}">${sp!=null?sp.toFixed(2)+'x':'-'}</td>`;});if(hasCuda)VS.forEach(v=>{const r=find(run,algo,v,'cuda',gc);const sp=r?r.speedup:null;const cl=sp==null?'':sp>=2?'ok':sp>=1?'wa':'ba';h+=`<td class="${cl}" style="outline:1px solid #7c3aed44">${sp!=null?sp.toFixed(2)+'x':'-'}</td>`;});h+='</tr>';});
   document.getElementById('bc4-tbl').innerHTML=h+'</tbody></table>';
 }
 
@@ -349,9 +423,6 @@ function renderMat(){
   const gc=(run.hardware||{}).gpu_cuda_cores||896;
   const threadsList=uniq((run.resultados||[]).filter(r=>r.modo==='openmp').map(r=>r.threads)).sort((a,b)=>a-b);
   const maxTh=threadsList.length?Math.max(...threadsList):1;
-  const XMOD=[{m:'serial',t:1},...threadsList.map(t=>({m:'openmp',t})),{m:'gpu_sim',t:gc}];
-  if(hasCuda)XMOD.push({m:'cuda',t:gc});
-  const XLBL=XMOD.map(x=>x.m==='serial'?'Serial':x.m==='gpu_sim'?'GPU Sim':x.m==='cuda'?'GPU Real':x.t+'t');
   const maxV=Math.max(...VS);
 
   cont.innerHTML=`
@@ -370,7 +441,13 @@ function renderMat(){
   <div class="sec"><div class="sh"><div class="sn">5</div><div class="st">GPU vs CPU &mdash; maior volume (${fv(maxV)})</div></div>
     <p class="exp">Speedup da GPU Real em rela&ccedil;&atilde;o ao serial CPU. Algoritmos com fp=100% s&atilde;o os mais beneficiados por GPU.</p>
     <div class="gpu-highlight" id="mc-gpu-cards"></div></div>
-  <div class="sec"><div class="sh"><div class="sn">6</div><div class="st">Tabela resumo</div></div>
+  <div class="sec"><div class="sh"><div class="sn">6</div><div class="st">Decomposi&ccedil;&atilde;o do tempo na GPU: setup &times; kernel</div></div>
+    <p class="exp">O <b>contraste com a busca</b>: Monte Carlo e Mandelbrot geram os dados <b>dentro da GPU</b> &mdash; n&atilde;o h&aacute; transfer&ecirc;ncia H2D de um array pelo PCIe, s&oacute; um overhead m&iacute;nimo de setup (aloca&ccedil;&atilde;o + retorno de um escalar). Por isso o <b>kernel domina quase 100%</b> e a GPU atinge seu potencial. Compare com a busca, onde a transfer&ecirc;ncia ofusca o kernel. Requer build CUDA recompilado (<code>tempo_transfer_s</code> / <code>tempo_kernel_s</code>).</p>
+    <div class="g2">
+      <div class="cb"><div class="cbt">Monte Carlo &pi; &mdash; setup vs kernel (ms)</div><canvas id="mc5a"></canvas></div>
+      <div class="cb"><div class="cbt">Mandelbrot 2D &mdash; setup vs kernel (ms)</div><canvas id="mc5b"></canvas></div>
+    </div></div>
+  <div class="sec"><div class="sh"><div class="sn">7</div><div class="st">Tabela resumo</div></div>
     <div class="cb" id="mc4-tbl"></div></div>`;
 
   mkChart('mc1','line',VS.map(fv),ALGO_MAT.map(algo=>({label:ALGO_MAT_LABEL[algo],data:VS.map(v=>{const r=find(run,algo,v,'serial',1);return r?r.tempo_s:null;}),borderColor:ALGO_MAT_COLOR[algo],backgroundColor:ALGO_MAT_COLOR[algo]+'33',pointRadius:5,tension:.3,fill:false})),{ylog:true,xTitle:'Volume',yTitle:'Tempo (s) — escala log'});
@@ -396,6 +473,9 @@ function renderMat(){
   const cards=document.getElementById('mc-gpu-cards');
   if(!hasCuda){cards.innerHTML='<span style="color:var(--mt);font-size:.82rem">GPU Real n\u00e3o dispon\u00edvel neste run (build CPU). Use benchmark_cuda.exe para dados CUDA.</span>';}
   else{cards.innerHTML=ALGO_MAT.map(algo=>{const rC=find(run,algo,maxV,'cuda',gc);const sp=rC?rC.speedup:null;return `<div class="gpu-card"><div class="lbl">${ALGO_MAT_LABEL[algo]} &mdash; ${fv(maxV)}</div><div class="val">${sp!=null?sp.toFixed(1)+'x':'?'}</div><div class="sub">GPU Real vs serial CPU</div></div>`;}).join('');}
+
+  drawDecomp(run,'montecarlo',gc,'mc5a',null,'Overhead de setup (sem H2D)');
+  drawDecomp(run,'mandelbrot',gc,'mc5b',null,'Overhead de setup (sem H2D)');
 
   const modes=['serial',...threadsList.map(t=>'openmp_'+t),...(hasCuda?['cuda']:[])];
   const modeLabel=m=>m==='serial'?'Serial':m.startsWith('openmp_')?m.replace('openmp_','')+'t OMP':'GPU Real';
@@ -433,8 +513,8 @@ function renderPanorama(){
   html += `</div></div>`;
 
   // Radar Chart Data Prep
-  const radarAxes = ['Busca Linear', 'Reduce Paralelo', 'Monte Carlo π', 'Mandelbrot 2D'];
-  const rKeys = [{s:'busca',a:'linear'}, {s:'busca',a:'reduce'}, {s:'matematica',a:'montecarlo'}, {s:'matematica',a:'mandelbrot'}];
+  const radarAxes = ['Busca Linear', 'Hash Lookup', 'Monte Carlo π', 'Mandelbrot 2D'];
+  const rKeys = [{s:'busca',a:'linear'}, {s:'busca',a:'hash'}, {s:'matematica',a:'montecarlo'}, {s:'matematica',a:'mandelbrot'}];
   
   const getBestSp = (fp, sim, algo) => {
      const g = groups[fp];
@@ -642,7 +722,7 @@ function renderHardware(){
     <p class="exp">Como o speedup OpenMP evolui conforme o volume de dados cresce. Se a curva sobe com o volume, a m&aacute;quina escala bem (lei de Gustafson). Curva plana ou caindo = gargalo de mem&oacute;ria/overhead de threads. Cada linha colorida = uma m&aacute;quina.</p>
     <div class="g2">
       <div class="cb"><div class="cbt">Busca Linear &mdash; speedup OpenMP &times; volume &nbsp; <span style="font-size:.7rem;opacity:.7">${fps.map(fp=>`<span style="color:${groups[fp].col}">${groups[fp].hw.cpu_nome||groups[fp].label}</span>`).join(', ')}</span></div><canvas id="hw-c1"></canvas></div>
-      <div class="cb"><div class="cbt">Reduce Paralelo &mdash; speedup OpenMP &times; volume &nbsp; <span style="font-size:.7rem;opacity:.7">${fps.map(fp=>`<span style="color:${groups[fp].col}">${groups[fp].hw.cpu_nome||groups[fp].label}</span>`).join(', ')}</span></div><canvas id="hw-c2"></canvas></div>
+      <div class="cb"><div class="cbt">Hash Lookup &mdash; speedup OpenMP &times; volume &nbsp; <span style="font-size:.7rem;opacity:.7">${fps.map(fp=>`<span style="color:${groups[fp].col}">${groups[fp].hw.cpu_nome||groups[fp].label}</span>`).join(', ')}</span></div><canvas id="hw-c2"></canvas></div>
     </div>
   </div>
 
@@ -714,7 +794,7 @@ function renderHardware(){
       mkChart('hw-c0','bar',algoLbls,dsBar,{xTitle:'Algoritmo',yTitle:'Speedup OpenMP'});
     }
 
-    ['linear','reduce'].forEach((algo,ci)=>{
+    ['linear','hash'].forEach((algo,ci)=>{
       mkChart(['hw-c1','hw-c2'][ci],'line',cvBusca.map(fv),fps.map(fp=>{
         const r=bestRun(fp,'busca');const mt=maxThOf(fp,'busca',null);
         return{label:groups[fp].label,data:cvBusca.map(v=>{const x=r?find(r.data,algo,v,'openmp',mt):null;return x?x.speedup:null;}),borderColor:groups[fp].col,backgroundColor:groups[fp].col+'33',...LS};
@@ -727,13 +807,13 @@ function renderHardware(){
 
     if(bv){
       let h='<table><thead><tr><th>Hardware</th><th>Nucl.</th><th>CUDA cores</th>';
-      ['linear','binaria','hash','reduce'].forEach(a=>h+=`<th>${ALGO_LABEL[a]} serial @${fv(bv)}</th><th>OpenMP speedup</th>${fps.some(fp=>{const r=bestRun(fp,'busca');return r&&(r.data.resultados||[]).some(x=>x.modo==='cuda');})?`<th>GPU Real speedup</th>`:''}`)
+      ['linear','binaria','hash'].forEach(a=>h+=`<th>${ALGO_LABEL[a]} serial @${fv(bv)}</th><th>OpenMP speedup</th>${fps.some(fp=>{const r=bestRun(fp,'busca');return r&&(r.data.resultados||[]).some(x=>x.modo==='cuda');})?`<th>GPU Real speedup</th>`:''}`)
       h+='</tr></thead><tbody>';
       const hasCuBusca=fps.some(fp=>{const r=bestRun(fp,'busca');return r&&(r.data.resultados||[]).some(x=>x.modo==='cuda');});
       fps.forEach(fp=>{
         const g=groups[fp];const r=bestRun(fp,'busca');const mt=maxThOf(fp,'busca',bv);const gc2=g.hw.gpu_cuda_cores||896;
         h+=`<tr><td><span style="display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:${g.col};margin-right:.4rem"></span><b>${g.label}</b></td><td>${g.hw.cpu_nucleos||'?'}</td><td>${g.hw.gpu_cuda_cores||'?'}</td>`;
-        ['linear','binaria','hash','reduce'].forEach(a=>{
+        ['linear','binaria','hash'].forEach(a=>{
           const rs=r?find(r.data,a,bv,'serial',1):null;const ro=r?find(r.data,a,bv,'openmp',mt):null;const rc=hasCuBusca?(r?find(r.data,a,bv,'cuda',gc2):null):null;
           const spo=ro?ro.speedup:null;const spc=rc?rc.speedup:null;
           const clo=spo==null?'':spo>=2?'ok':spo>=1?'wa':'ba';
@@ -884,7 +964,7 @@ function renderCmpBusca(runs,cont){
 
   cont.innerHTML=`
   <div class="sec"><div class="sh"><div class="sn">3</div><div class="st">Speedup ${maxTh}t &times; volume</div></div>
-    <div class="g2"><div class="cb"><div class="cbt">Busca Linear</div><canvas id="cc1"></canvas></div><div class="cb"><div class="cbt">Reduce Paralelo</div><canvas id="cc2"></canvas></div></div></div>
+    <div class="g2"><div class="cb"><div class="cbt">Busca Linear</div><canvas id="cc1"></canvas></div><div class="cb"><div class="cbt">Hash Lookup</div><canvas id="cc2"></canvas></div></div></div>
   <div class="sec"><div class="sh"><div class="sn">4</div><div class="st">Tempo serial &times; volume (escala log)</div></div>
     <div class="cb"><div class="cbt">Busca Linear — tempo serial</div><canvas id="cc3"></canvas></div></div>
   <div class="sec"><div class="sh"><div class="sn">5</div><div class="st">Curva speedup &times; threads — maior volume (${fv(bv)})</div></div>
@@ -893,22 +973,20 @@ function renderCmpBusca(runs,cont){
     <div class="cb" id="cc-tbl"></div></div>`;
 
   mkChart('cc1','line',allVS.map(fv),runs.map(r=>({label:r.label,data:allVS.map(v=>{const x=find(r.data,'linear',v,'openmp',maxTh);return x?x.speedup:null;}),borderColor:r.col,backgroundColor:r.col+'33',...LS})),{xTitle:'Volume',yTitle:'Speedup'});
-  mkChart('cc2','line',allVS.map(fv),runs.map(r=>({label:r.label,data:allVS.map(v=>{const x=find(r.data,'reduce',v,'openmp',maxTh);return x?x.speedup:null;}),borderColor:r.col,backgroundColor:r.col+'33',...LS})),{xTitle:'Volume',yTitle:'Speedup'});
+  mkChart('cc2','line',allVS.map(fv),runs.map(r=>({label:r.label,data:allVS.map(v=>{const x=find(r.data,'hash',v,'openmp',maxTh);return x?x.speedup:null;}),borderColor:r.col,backgroundColor:r.col+'33',...LS})),{xTitle:'Volume',yTitle:'Speedup'});
   mkChart('cc3','line',allVS.map(fv),runs.map(r=>({label:r.label,data:allVS.map(v=>{const x=find(r.data,'linear',v,'serial',1);return x?x.tempo_s:null;}),borderColor:r.col,backgroundColor:r.col+'33',...LS})),{ylog:true,xTitle:'Volume',yTitle:'Tempo (s)'});
 
   const XMOD2=[{m:'serial',t:1},...allTL.map(t=>({m:'openmp',t}))];
-  const hasGS=runs.some(r=>(r.data.resultados||[]).some(x=>x.modo==='gpu_sim'));
   const hasCu=runs.some(r=>(r.data.resultados||[]).some(x=>x.modo==='cuda'));
-  if(hasGS){const gc=runs[0].data.hardware?.gpu_cuda_cores||896;XMOD2.push({m:'gpu_sim',t:gc});}
   if(hasCu){const gc=runs[0].data.hardware?.gpu_cuda_cores||896;XMOD2.push({m:'cuda',t:gc});}
-  const XLBL2=XMOD2.map(x=>x.m==='serial'?'Serial':x.m==='gpu_sim'?'GPU Sim':x.m==='cuda'?'GPU Real':x.t+'t');
+  const XLBL2=XMOD2.map(x=>x.m==='serial'?'Serial':x.m==='cuda'?'GPU Real':x.t+'t');
   const avgFs=(()=>{const fss=runs.map(r=>{const rx=find(r.data,'linear',bv,'openmp',maxTh);if(!rx||rx.speedup<=1)return 0.5;const v=(maxTh/rx.speedup-1)/(maxTh-1);return Math.max(0.001,Math.min(0.999,v));});return fss.reduce((a,b)=>a+b,0)/fss.length;})();
   const amdDs=runs.map(r=>({label:r.label,data:XMOD2.map(x=>{const rx=find(r.data,'linear',bv,x.m,x.t);return rx?rx.speedup:null;}),borderColor:r.col,backgroundColor:r.col+'33',...LS}));
   amdDs.push({label:'Teto Amdahl (m\u00e9dia)',data:XMOD2.map(x=>amdahlCap(x.t,avgFs)),borderColor:'#94a3b8',borderDash:[7,4],borderWidth:1.5,pointRadius:0,fill:false});
   mkChart('cc4','line',XLBL2,amdDs,{xTitle:'Modo',yTitle:'Speedup'});
 
-  let h='<table><thead><tr><th>Run</th><th>Build</th><th>CPU</th>';['linear','reduce','hash'].forEach(a=>h+=`<th>${ALGO_LABEL[a]} ${maxTh}t / ${fv(bv)}</th>`);h+=`<th>T serial @ ${fv(bv)}</th></tr></thead><tbody>`;
-  runs.forEach(r=>{h+=`<tr><td><span style="display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:${r.col};margin-right:.4rem"></span><b>${r.label}</b></td><td>${r.data.build||'?'}</td><td>${r.data.hardware?.cpu_nome||'?'}</td>`;['linear','reduce','hash'].forEach(a=>{const rows=(r.data.resultados||[]).filter(x=>x.algoritmo===a&&x.volume===bv&&x.modo==='openmp');const mx=rows.length?Math.max(...rows.map(x=>x.speedup)):null;const cl=mx==null?'':mx>=2?'ok':mx>=1?'wa':'ba';h+=`<td class="${cl}">${mx!=null?mx.toFixed(2)+'x':'-'}</td>`;});const rt=find(r.data,'linear',bv,'serial',1);h+=`<td>${rt?(rt.tempo_s*1000).toFixed(2)+'ms':'-'}</td></tr>`;});
+  let h='<table><thead><tr><th>Run</th><th>Build</th><th>CPU</th>';['linear','binaria','hash'].forEach(a=>h+=`<th>${ALGO_LABEL[a]} ${maxTh}t / ${fv(bv)}</th>`);h+=`<th>T serial @ ${fv(bv)}</th></tr></thead><tbody>`;
+  runs.forEach(r=>{h+=`<tr><td><span style="display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:${r.col};margin-right:.4rem"></span><b>${r.label}</b></td><td>${r.data.build||'?'}</td><td>${r.data.hardware?.cpu_nome||'?'}</td>`;['linear','binaria','hash'].forEach(a=>{const rows=(r.data.resultados||[]).filter(x=>x.algoritmo===a&&x.volume===bv&&x.modo==='openmp');const mx=rows.length?Math.max(...rows.map(x=>x.speedup)):null;const cl=mx==null?'':mx>=2?'ok':mx>=1?'wa':'ba';h+=`<td class="${cl}">${mx!=null?mx.toFixed(2)+'x':'-'}</td>`;});const rt=find(r.data,'linear',bv,'serial',1);h+=`<td>${rt?(rt.tempo_s*1000).toFixed(2)+'ms':'-'}</td></tr>`;});
   document.getElementById('cc-tbl').innerHTML=h+'</tbody></table>';
 }
 
@@ -939,6 +1017,11 @@ function renderCmpMat(runs,cont){
   runs.forEach(r=>{h+=`<tr><td><span style="display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:${r.col};margin-right:.4rem"></span><b>${r.label}</b></td><td>${r.data.build||'?'}</td><td>${r.data.hardware?.cpu_nome||'?'}</td>`;ALGO_MAT.forEach(a=>{const rows=(r.data.resultados||[]).filter(x=>x.algoritmo===a&&x.volume===bv&&x.modo==='openmp');const mx=rows.length?Math.max(...rows.map(x=>x.speedup)):null;const cl=mx==null?'':mx>=2?'ok':mx>=1?'wa':'ba';h+=`<td class="${cl}">${mx!=null?mx.toFixed(2)+'x':'-'}</td>`;});h+='</tr>';});
   document.getElementById('cm-tbl').innerHTML=h+'</tbody></table>';
 }
+
+/* Botões "⬇ PNG" aparecem automaticamente em todo card .cb com canvas, a cada render */
+const _expObs=new MutationObserver(()=>addExportButtons());
+_expObs.observe(document.getElementById('content'),{childList:true,subtree:true});
+addExportButtons();
 </script>
 </body>
 </html>
