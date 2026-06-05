@@ -10,7 +10,6 @@ Este projeto é um **benchmark científico** que compara o desempenho de algorit
 |---|---|---|
 | `serial` | C puro, 1 thread | CPU |
 | `openmp` | OpenMP, N threads | CPU (paralelo) |
-| `gpu_sim` | C simulando CUDA | CPU (emula GPU) |
 | `cuda` | CUDA real | GPU NVIDIA |
 
 O objetivo acadêmico é demonstrar empiricamente as **Leis de Amdahl e Gustafson** — ou seja, mostrar na prática quando e por que paralelismo ajuda ou não.

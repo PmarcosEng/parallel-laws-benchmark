@@ -128,6 +128,12 @@ cudaEventElapsedTime(&ms_ker, ev2, ev3);   // tempo kernel em ms
 
 `cudaEvent_t` é um **timer de hardware da GPU** — precisão de ~0.5 µs. Muito mais preciso que `clock()` da CPU para medir operações GPU.
 
+### O que o JSON guarda: decomposição transferência × kernel
+
+Para cada linha de modo `cuda`, o benchmark grava dois campos extras: `tempo_kernel_s` (só o kernel, medido por `cudaEvent`) e `tempo_transfer_s` (= tempo total − kernel, ou seja o custo de H2D pelo barramento PCIe). Isso permite **separar o tempo de transferência do tempo de processamento na GPU** — que é justamente a fração serial da Lei de Amdahl. No dashboard, esses dois campos viram o gráfico empilhado "transferência PCIe × kernel".
+
+> **Busca × matemática:** na busca, o array de `Event` é copiado para a GPU, então a transferência é real e pesa. Na matemática (Monte Carlo / Mandelbrot) os dados são **gerados dentro da GPU** — não há cópia de array, só um escalar de 8 bytes volta. Por isso, na matemática, `tempo_transfer_s` é praticamente zero (só overhead de setup) e o kernel domina quase 100%.
+
 ---
 
 ## [T10] Kernel de Busca Linear — Análise Detalhada
@@ -172,35 +178,31 @@ int pos = atomicAdd(d_count, 1);
 out_indices[pos] = i;  // cada thread escreve numa posição única
 ```
 
-**Desvantagem**: muitas threads dando `atomicAdd` simultaneamente causam **serialização** na memória global. É por isso que o kernel de reduce paralelo usa **shared memory** para minimizar os `atomicAdd`.
+**Desvantagem**: muitas threads dando `atomicAdd` simultaneamente causam **serialização** na memória global. É por isso que o kernel de Monte Carlo (Seção T11) reduz os parciais em **shared memory** e faz **apenas 1 `atomicAdd` por bloco**, em vez de um por elemento.
 
 ---
 
-## [T11] Kernel de Reduce com Shared Memory
+## [T11] Redução em Shared Memory (kernel Monte Carlo)
+
+Quando milhares de threads precisam **somar** seus resultados num único contador, fazer um `atomicAdd` por elemento serializa o acesso à memória global (lento). A solução é reduzir primeiro **dentro do bloco**, em shared memory, e só então fazer um `atomicAdd` por bloco. O kernel de Monte Carlo usa exatamente esse padrão: cada thread conta quantos pontos caíram dentro do círculo, escreve o parcial em `sdata[tid]`, e o bloco soma esses parciais em árvore.
 
 ```c
-__global__ void kernel_reduce_count(
-    const Event* dados, int n, float vmin, float vmax, int* d_result)
-{
-    extern __shared__ int sdata[];       // shared memory alocada em runtime
-
+__global__ void kernel_montecarlo(long n, unsigned long long *d_inside) {
+    extern __shared__ unsigned long long sdata[];
     int tid = threadIdx.x;
-    int i   = blockIdx.x * blockDim.x + threadIdx.x;
+    // ... cada thread acumula 'local_inside' no seu grid-stride loop ...
 
-    // fase 1: cada thread calcula seu predicado (0 ou 1)
-    sdata[tid] = (i < n && dados[i].valor >= vmin && dados[i].valor <= vmax) ? 1 : 0;
-    __syncthreads();    // barreira: todos no bloco chegam aqui antes de continuar
+    sdata[tid] = local_inside;        // fase 1: cada thread escreve seu parcial
+    __syncthreads();                  // barreira: todos no bloco chegam antes de seguir
 
-    // fase 2: redução em árvore — log2(256) = 8 passos
-    for (int s = blockDim.x >> 1; s > 0; s >>= 1) {
-        if (tid < s)
-            sdata[tid] += sdata[tid + s];
+    // fase 2: redução em árvore — log2(blockDim) passos
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (tid < s) sdata[tid] += sdata[tid + s];
         __syncthreads();
     }
 
     // fase 3: thread 0 do bloco faz 1 atomicAdd com a soma do bloco
-    if (tid == 0)
-        atomicAdd(d_result, sdata[0]);
+    if (tid == 0) atomicAdd(d_inside, sdata[0]);
 }
 ```
 
@@ -213,10 +215,10 @@ Passo 1:  [1+0, 0+1, 1+1, 1+1, -, -, -, -]  = [1, 1, 2, 2]   s=2
                  ↓
 Passo 2:  [1+1, 1+2, -, -, -, -, -, -]  = [2, 3]   s=1
                  ↓
-Passo 3:  [2+3, -, -, -, -, -, -, -]  = [5]   ← atomicAdd(d_result, 5)
+Passo 3:  [2+3, -, -, -, -, -, -, -]  = [5]   ← atomicAdd(d_inside, 5)
 ```
 
-Para 256 threads → 8 passos → **apenas 1 `atomicAdd` por bloco** (vs 1 por match no kernel anterior).
+Para 256 threads → 8 passos → **apenas 1 `atomicAdd` por bloco** (vs 1 por ponto contado). O Mandelbrot usa o mesmo padrão para somar o total de iterações.
 
 ### `__syncthreads()`
 
@@ -575,22 +577,19 @@ if (cuda_ok) {
      • warmup (1 run descartado)
      • serial: 3 runs → mediana → t_serial_linear
      • openmp 2t, 4t, 8t...: speedup = t_serial / t_par
-     • gpu_sim: simula em CPU
      • cuda (se HAS_CUDA e cuda_ok): H2D + kernel + D2H
    ↓
 8.   Benchmark BUSCA BINÁRIA (mesmo padrão)
    ↓
 9.   Benchmark HASH LOOKUP (mesmo padrão)
    ↓
-10.  Benchmark REDUCE PARALELO (mesmo padrão)
+10.  free(dados), hash_destruir(), free(dados_ord)
    ↓
-11.  free(dados), hash_destruir(), free(dados_ord)
-   ↓
-12. for (vi=0; vi<N_MATH_VOLUMES; vi++):
+11. for (vi=0; vi<N_MATH_VOLUMES; vi++):
     • Monte Carlo Pi
     • Mandelbrot 2D
    ↓
-13. salvar_run_busca() → JSON em runs/busca_cuda/TIMESTAMP.json
+12. salvar_run_busca() → JSON em runs/busca_cuda/TIMESTAMP.json
     salvar_run_matematica() → JSON em runs/matematica_cuda/TIMESTAMP.json
 ```
 
@@ -605,7 +604,6 @@ O benchmark foi projetado para **mostrar isso**. Resumo:
 | Busca Linear (grande) | lento | rápido | **GPU vence** |
 | Busca Binária | muito rápido (O log n) | lento (H2D domina) | **CPU vence** |
 | Hash Lookup | O(1) | setup+H2D caro | **CPU vence** |
-| Reduce (grande) | lento | muito rápido | **GPU vence** |
 | Monte Carlo | lento | muito rápido | **GPU vence** |
 | Mandelbrot | lento | muito rápido | **GPU vence** |
 
