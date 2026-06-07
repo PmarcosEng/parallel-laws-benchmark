@@ -1,0 +1,13 @@
+# === Gerados — nunca versionar ===
+
+# Pasta de build do CMake (descartável: pode apagar e refazer com `cmake ..`)
+build/
+
+# Artefatos do CMake, caso algum build saia in-source
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+
+# Objetos compilados
+*.o
+*.obj
