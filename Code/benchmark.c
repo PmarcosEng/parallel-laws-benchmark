@@ -2,9 +2,12 @@
 #ifdef _MSC_VER
 #  define _CRT_SECURE_NO_WARNINGS
 #endif
-/* clock_gettime exige _POSIX_C_SOURCE no GCC/MinGW; MSVC nao reconhece a macro */
+/* No GCC/MinGW precisamos destravar extensoes POSIX/GNU dos headers.
+   _GNU_SOURCE e o superconjunto: cobre clock_gettime (precisava de
+   _POSIX_C_SOURCE) E putenv (extensao XSI, exige nivel mais alto que
+   199309L expunha). MSVC ignora a macro e usa o caminho proprio. */
 #ifndef _MSC_VER
-#  define _POSIX_C_SOURCE 199309L
+#  define _GNU_SOURCE
 #endif
 #include <stdio.h>
 #include <stdlib.h>

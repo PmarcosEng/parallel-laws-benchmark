@@ -120,4 +120,4 @@ endif()
 # driver NVIDIA, SEM precisar do cudart instalado.
 # Custo: binário maior. Pra DISTRIBUIR, vale a pena. Pra só rodar
 # no seu notebook (que tem o Toolkit), pode deixar desligado.
-# set_target_properties(benchmark_cuda PROPERTIES CUDA_RUNTIME_LIBRARY Static)
+set_target_properties(benchmark_cuda PROPERTIES CUDA_RUNTIME_LIBRARY Static)
