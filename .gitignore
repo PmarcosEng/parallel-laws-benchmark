@@ -2,6 +2,7 @@
 
 # Pasta de build do CMake (descartável: pode apagar e refazer com `cmake ..`)
 build/
+build-wsl/
 
 # Artefatos do CMake, caso algum build saia in-source
 CMakeCache.txt
