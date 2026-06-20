@@ -72,6 +72,9 @@ add_executable(benchmark_cuda
     generator.c
     search.c
     sim_math.c
+    config.c
+    timing.c
+    report.c
     search_cuda.cu
     sim_math_cuda.cu
 )

@@ -4,24 +4,25 @@ CC      = gcc
 CFLAGS  = -std=c99 -Wall -Wextra -Wno-missing-field-initializers -O2
 LDFLAGS = -lm
 OPENMP  = -fopenmp
-SRC     = generator.c search.c sim_math.c benchmark.c
+SRC     = generator.c search.c sim_math.c config.c timing.c report.c benchmark.c
+HDR     = event.h search.h generator.h sim_math.h config.h timing.h report.h
 
 # ── Desenvolvimento (linkagem dinâmica, binário menor) ──────────────────────
 all: benchmark
 
-benchmark: $(SRC) event.h search.h
+benchmark: $(SRC) $(HDR)
 	$(CC) $(CFLAGS) $(OPENMP) -o benchmark $(SRC) $(LDFLAGS)
 	@echo ">>> benchmark compilado (dinamico + OpenMP)."
 
 # Sem OpenMP — fallback para Windows sem suporte
-benchmark_noomp: $(SRC) event.h search.h
+benchmark_noomp: $(SRC) $(HDR)
 	$(CC) $(CFLAGS) -o benchmark $(SRC) $(LDFLAGS)
 	@echo ">>> benchmark compilado (sem OpenMP)."
 
 # ── Distribuição: binário estático, sem dependências externas ───────────────
 # O executável resultante roda em qualquer Windows sem instalar MinGW/libgomp.
 # Uso: make dist   →  gera benchmark_dist.exe  (ou benchmark_dist no Linux)
-dist: $(SRC) event.h search.h
+dist: $(SRC) $(HDR)
 	$(CC) $(CFLAGS) $(OPENMP) -static -s \
 		-o benchmark_dist \
 		$(SRC) \
@@ -29,7 +30,7 @@ dist: $(SRC) event.h search.h
 	@echo ">>> benchmark_dist gerado (estatico, redistribuivel sem dependencias)."
 
 # Distribuição sem OpenMP (portátil máximo — 1 arquivo, 0 DLLs necessárias)
-dist_noomp: $(SRC) event.h search.h
+dist_noomp: $(SRC) $(HDR)
 	$(CC) $(CFLAGS) -static -s \
 		-o benchmark_dist_noomp \
 		$(SRC) \
@@ -45,7 +46,7 @@ ARCH       = -arch=sm_75
 CUDA_FLAGS = $(ARCH) -O3 -Xcompiler "-fopenmp" -DHAS_CUDA
 CUDA_SRC   = search_cuda.cu sim_math_cuda.cu
 
-benchmark_cuda: $(SRC) $(CUDA_SRC) event.h search.h search_cuda.h sim_math_cuda.h
+benchmark_cuda: $(SRC) $(CUDA_SRC) $(HDR) search_cuda.h sim_math_cuda.h
 	$(NVCC) $(CUDA_FLAGS) -o benchmark_cuda $(SRC) $(CUDA_SRC) -lm
 	@echo ">>> benchmark_cuda compilado (CUDA real + OpenMP)."
 
